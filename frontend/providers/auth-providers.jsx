@@ -1,18 +1,18 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import { User, login as apiLogin, register as apiRegister, getCurrentUser } from '@/lib/api/auth';
+import { login as apiLogin, register as apiRegister, getCurrentUser } from '@/lib/api/auth';
 
-// Create Auth Context
+// Create Auth Context with proper function signatures
 const AuthContext = createContext({
   user: null,
   token: null,
   isLoading: true,
   isAuthenticated: false,
-  login: async () => {},
-  register: async () => {},
+  login: async (email, password) => null, // Properly define parameters
+  register: async (username, email, password) => null, // Properly define parameters
   logout: () => {},
-  updateUserData: () => {}
+  updateUserData: (userData) => {} // Properly define parameter
 });
 
 // Auth Provider Component

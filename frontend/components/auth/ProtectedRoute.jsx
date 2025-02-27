@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/providers/auth-providers';
 import { Loader } from 'lucide-react';
 

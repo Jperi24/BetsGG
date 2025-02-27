@@ -14,6 +14,8 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   
+  console.log('LoginForm mounted with redirectPath:', redirectPath);
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -28,8 +30,10 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
     
     try {
       await login(email, password);
+      console.log('Login successful, redirecting to:', redirectPath);
       router.push(redirectPath);
     } catch (err) {
+      console.error('Login error:', err);
       setError(err.message || 'Failed to log in. Please check your credentials.');
     } finally {
       setIsLoading(false);

@@ -1,5 +1,7 @@
+"use client"
+
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout';
 import CreateBetForm from '@/components/betting/CreateBetForm';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';

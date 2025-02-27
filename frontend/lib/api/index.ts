@@ -18,6 +18,10 @@ const apiClient = axios.create({
   }
 });
 
+
+
+
+
 // Add a request interceptor to add auth token
 apiClient.interceptors.request.use(
   (config) => {

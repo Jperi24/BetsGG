@@ -129,6 +129,7 @@ const fetchAllTournaments = async () => {
         
         // Store in temporary cache
         temporaryCache.set(tournament.slug.toLowerCase(), tournamentDetail);
+        console.log("Setting:",tournament.slug.toLowerCase())
         
         // Store in database for persistence
         await Tournament.findOneAndUpdate(
@@ -267,11 +268,14 @@ const updateOngoingTournaments = async () => {
  * Get tournament details from cache or database
  */
 const getTournamentBySlug = async (slug) => {
+  console.log("THIS HAS BEEN CALLED")
   if (!slug) {
     throw new AppError('Tournament slug is required', 400);
   }
   
-  const normalizedSlug = slug.toLowerCase();
+  
+  const normalizedSlug = 'tournament/' + slug.toLowerCase();
+  console.log('normalizeed slug',normalizedSlug)
   
   // Try to get from cache first
   let tournament = dailyCache.get(normalizedSlug);
@@ -282,9 +286,11 @@ const getTournamentBySlug = async (slug) => {
     
     // If found in database, add to cache
     if (tournament) {
+      
       dailyCache.set(normalizedSlug, tournament.toObject());
       return tournament;
     } else {
+      console.log("tournament NOT FOUND")
       // If not in database, fetch from API and cache it
       try {
         const tournamentDetail = await startGGApi.getTournamentDetails(normalizedSlug);
@@ -409,6 +415,7 @@ const getOngoingTournaments = async (limit = 20) => {
  */
 const initializeCache = async () => {
   console.log('Initializing tournament cache...');
+  
   
   // Check if we have cached tournaments in the database
   const cachedTournaments = await Tournament.find({});

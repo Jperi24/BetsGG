@@ -78,9 +78,19 @@ export const getOngoingTournaments = async (limit = 20): Promise<{ data: { tourn
 };
 
 // Get tournament by slug
+// Add some additional error handling to your getTournamentBySlug function in lib/api/tournaments.ts
 export const getTournamentBySlug = async (slug: string): Promise<{ data: { tournament: Tournament } }> => {
-  const response = await apiClient.get(`/tournaments/${slug}`);
-  return handleApiResponse(response);
+  try {
+    console.log("we are calling this function");
+    console.log("THE SLUG IS",slug)
+    const response = await apiClient.get(`tournaments/:${slug}`);
+    console.log("API RESPONSE HERE",response)
+    console.log("API response status:", response.status);
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error("API error when getting tournament:", error);
+    throw error;
+  }
 };
 
 // Get sets by phase ID
@@ -88,6 +98,7 @@ export const getSetsByPhaseId = async (phaseId: string): Promise<{ data: { sets:
   const response = await apiClient.get(`/tournaments/phase/${phaseId}/sets`);
   return handleApiResponse(response);
 };
+
 
 // Search tournaments
 export const searchTournaments = async (query: string): Promise<{ data: { tournaments: Tournament[] } }> => {

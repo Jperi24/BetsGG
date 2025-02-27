@@ -1,29 +1,43 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import LoginForm from '@/components/auth/LoginForm';
 import { useAuth } from '@/providers/auth-providers';
+import { Loader } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get('from') || '/dashboard';
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, authInitialized } = useAuth();
   
-  // If user is already authenticated, redirect to dashboard
-  React.useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      router.push('/dashboard');
+  // Get the redirect path from URL query params if it exists
+  // Store the original 'from' parameter on first render to prevent it from being overwritten
+  const [redirectPath, setRedirectPath] = useState('/dashboard');
+  
+  useEffect(() => {
+    // Only set the redirect path once on initial load
+    const fromParam = searchParams.get('from');
+    if (fromParam && redirectPath === '/dashboard') {
+      console.log('Setting redirect path from URL:', fromParam);
+      setRedirectPath(fromParam);
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [searchParams, redirectPath]);
+  
+  // If user is already authenticated, redirect to the intended path
+  useEffect(() => {
+    if (authInitialized && !isLoading && isAuthenticated) {
+      console.log('User is authenticated, redirecting to:', redirectPath);
+      router.push(redirectPath);
+    }
+  }, [isLoading, isAuthenticated, router, redirectPath, authInitialized]);
   
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <Loader className="h-12 w-12 text-indigo-600 animate-spin mx-auto" />
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -31,7 +45,14 @@ export default function LoginPage() {
   }
   
   if (isAuthenticated) {
-    return null; // Will redirect in useEffect
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-gray-50">
+        <div className="text-center">
+          <Loader className="h-12 w-12 text-indigo-600 animate-spin mx-auto" />
+          <p className="mt-4 text-gray-600">Redirecting...</p>
+        </div>
+      </div>
+    );
   }
   
   return (
@@ -44,7 +65,7 @@ export default function LoginPage() {
           </p>
         </div>
         
-        <LoginForm redirectPath={from} />
+        <LoginForm redirectPath={redirectPath} />
         
         <div className="text-center mt-4">
           <p className="text-sm text-gray-600">

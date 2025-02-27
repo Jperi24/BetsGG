@@ -1,3 +1,4 @@
+// app/tournaments/[slug]/BetListContainer.jsx
 'use client';
 
 import React, { useState, useEffect } from 'react';

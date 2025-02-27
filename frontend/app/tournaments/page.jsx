@@ -1,8 +1,11 @@
+// frontend/app/tournaments/page.jsx
+"use client"
 import React, { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import TournamentList from '@/components/tournaments/tournament-list';
 import { getFeaturedTournaments, getUpcomingTournaments, getOngoingTournaments } from '@/lib/api/tournaments';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+// Remove this line:
+// import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Search, Loader } from 'lucide-react';
 
 const TournamentsPage = () => {

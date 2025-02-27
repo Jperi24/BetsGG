@@ -29,7 +29,7 @@ router.get(
   [
     param('slug')
       .isString()
-      .trim()
+      .trim(':')
       .notEmpty()
       .withMessage('Tournament slug is required')
       .matches(/^[a-zA-Z0-9-_]+$/)
