@@ -2,6 +2,7 @@
 const { app, connectDB } = require('./app');
 const seedDatabase = require('./utils/seed-data');
 const tournamentService = require('./services/tournament');
+const betUpdateService = require('./services/betting/update-service');
 
 // Flag to determine if we should seed the database
 const shouldSeedDatabase = process.env.SEED_DATABASE === 'true';
@@ -24,6 +25,14 @@ async function startServer() {
     
     // Setup scheduled updates for tournament data
     tournamentService.setupScheduledUpdates();
+
+    await tournamentService.initializeCache();
+    
+    // Setup scheduled updates for tournament data
+    tournamentService.setupScheduledUpdates();
+    
+    // Setup scheduled updates for bet statuses
+    betUpdateService.setupScheduledUpdates(10); // Check every 10 minutes
     
     // Start server
     const PORT = process.env.PORT || 3001;

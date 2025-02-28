@@ -41,6 +41,7 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
 // Get current user profile
 export const getCurrentUser = async (): Promise<{ data: { user: User } }> => {
   const response = await apiClient.get('/auth/me');
+  console.log("CURRENT USER RESPONSE",response)
   return handleApiResponse(response);
 };
 

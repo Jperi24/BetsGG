@@ -236,6 +236,11 @@ const getUserParticipatedBets = async (userId) => {
 /**
  * Claim winnings from a bet
  */
+// backend/src/services/betting/index.js - Update the claimWinnings function
+
+/**
+ * Claim winnings from a bet
+ */
 const claimWinnings = async (betId, userId) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -282,7 +287,11 @@ const claimWinnings = async (betId, userId) => {
     const totalPool = bet.totalPool;
     
     // Formula: (user bet / winning pool) * total pool
-    const winnings = (userBet / winningPool) * totalPool;
+    const grossWinnings = (userBet / winningPool) * totalPool;
+    
+    // Apply 1% house commission
+    const commission = grossWinnings * 0.01;
+    const netWinnings = grossWinnings - commission;
     
     // Find the user
     const user = await User.findById(userId).session(session);
@@ -291,7 +300,7 @@ const claimWinnings = async (betId, userId) => {
     }
 
     // Add winnings to user balance
-    user.balance += winnings;
+    user.balance += netWinnings;
     await user.save({ session });
 
     // Mark participant as claimed
@@ -301,23 +310,38 @@ const claimWinnings = async (betId, userId) => {
       { session }
     );
 
-    // Create transaction record
-    const transaction = new Transaction({
+    // Create transaction record for the winnings
+    const winTransaction = new Transaction({
       user: userId,
       type: 'win',
-      amount: winnings,
+      amount: netWinnings,
       currency: 'ETH', // Default currency
       status: 'completed',
       betId: bet._id,
       description: `Winnings from bet on ${bet.winner === 1 ? bet.contestant1.name : bet.contestant2.name} in ${bet.tournamentName}: ${bet.matchName}`
     });
 
-    await transaction.save({ session });
+    await winTransaction.save({ session });
+    
+    // Create transaction record for the commission (optional, for accounting)
+    const commissionTransaction = new Transaction({
+      user: userId,
+      type: 'commission',
+      amount: commission,
+      currency: 'ETH',
+      status: 'completed',
+      betId: bet._id,
+      description: `Commission fee (1%) on winnings from bet: ${bet.tournamentName}: ${bet.matchName}`
+    });
+    
+    await commissionTransaction.save({ session });
 
     await session.commitTransaction();
     return {
       success: true,
-      winnings,
+      grossWinnings,
+      commission,
+      netWinnings,
       newBalance: user.balance
     };
   } catch (error) {
@@ -327,7 +351,6 @@ const claimWinnings = async (betId, userId) => {
     session.endSession();
   }
 };
-
 /**
  * Report a dispute for a bet
  */

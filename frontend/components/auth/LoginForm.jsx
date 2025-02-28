@@ -30,8 +30,8 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
     
     try {
       await login(email, password);
-      console.log('Login successful, redirecting to:', redirectPath);
-      router.push(redirectPath);
+      const decodedPath = decodeURIComponent(redirectPath);
+      router.push(decodedPath);
     } catch (err) {
       console.error('Login error:', err);
       setError(err.message || 'Failed to log in. Please check your credentials.');

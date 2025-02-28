@@ -138,9 +138,40 @@ const GET_SETS_BY_PHASE_QUERY = `
   }
 `;
 
+const GET_SET_BY_ID_QUERY = `
+  query GetSetById($setId: ID!) {
+    set(id: $setId) {
+      id
+      fullRoundText
+      state
+      winnerId
+      slots {
+        id
+        standing {
+          placement
+          stats {
+            score {
+              value
+            }
+          }
+        }
+        entrant {
+          id
+          name
+          participants {
+            id
+            gamerTag
+          }
+        }
+      }
+    }
+  }
+`;
+
 module.exports = {
   GET_FEATURED_TOURNAMENTS_QUERY,
   GET_ALL_TOURNAMENTS_QUERY,
   GET_TOURNAMENT_QUERY,
-  GET_SETS_BY_PHASE_QUERY
+  GET_SETS_BY_PHASE_QUERY,
+  GET_SET_BY_ID_QUERY  
 };

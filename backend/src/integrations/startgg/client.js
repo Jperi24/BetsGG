@@ -3,11 +3,12 @@ const { GraphQLClient } = require('graphql-request');
 require('dotenv').config();
 
 // GraphQL queries
-const { 
+const {
   GET_FEATURED_TOURNAMENTS_QUERY,
   GET_ALL_TOURNAMENTS_QUERY,
   GET_TOURNAMENT_QUERY,
-  GET_SETS_BY_PHASE_QUERY
+  GET_SETS_BY_PHASE_QUERY,
+  GET_SET_BY_ID_QUERY // Make sure to add this import
 } = require('./queries');
 
 // Sleep function
@@ -42,47 +43,68 @@ const fetchWithRetry = async (query, variables, retries = 3, delay = 1000) => {
   throw new Error('Failed to fetch data after retries');
 };
 
-// API methods
-const startGGApi = {
-  // Get featured tournaments
-  getFeaturedTournaments: async (afterDate, page = 1, perPage = 25) => {
-    const data = await fetchWithRetry(GET_FEATURED_TOURNAMENTS_QUERY, {
-      afterDate,
-      page,
-      perPage,
-    });
-    return data.tournaments.nodes;
-  },
-  
-  // Get all tournaments
-  getTournaments: async (afterDate, beforeDate, page = 1, perPage = 25) => {
-    const data = await fetchWithRetry(GET_ALL_TOURNAMENTS_QUERY, {
-      afterDate,
-      beforeDate,
-      page,
-      perPage,
-    });
-    return {
-      tournaments: data.tournaments.nodes,
-      pageInfo: data.tournaments.pageInfo
-    };
-  },
-  
-  // Get tournament details
-  getTournamentDetails: async (slug) => {
-    const data = await fetchWithRetry(GET_TOURNAMENT_QUERY, { slug });
-    return data.tournament;
-  },
-  
-  // Get sets by phase
-  getSetsByPhase: async (phaseId, page = 1, perPage = 25) => {
-    const data = await fetchWithRetry(GET_SETS_BY_PHASE_QUERY, {
-      phaseId,
-      page,
-      perPage,
-    });
-    return data.phase.sets.nodes;
+// Get featured tournaments
+const getFeaturedTournaments = async (afterDate, page = 1, perPage = 25) => {
+  const data = await fetchWithRetry(GET_FEATURED_TOURNAMENTS_QUERY, {
+    afterDate,
+    page,
+    perPage,
+  });
+  return data.tournaments.nodes;
+};
+
+// Get all tournaments
+const getTournaments = async (afterDate, beforeDate, page = 1, perPage = 25) => {
+  const data = await fetchWithRetry(GET_ALL_TOURNAMENTS_QUERY, {
+    afterDate,
+    beforeDate,
+    page,
+    perPage,
+  });
+  return {
+    tournaments: data.tournaments.nodes,
+    pageInfo: data.tournaments.pageInfo
+  };
+};
+
+// Get tournament details
+const getTournamentDetails = async (slug) => {
+  const data = await fetchWithRetry(GET_TOURNAMENT_QUERY, { slug });
+  return data.tournament;
+};
+
+// Get sets by phase
+const getSetsByPhase = async (phaseId, page = 1, perPage = 25) => {
+  const data = await fetchWithRetry(GET_SETS_BY_PHASE_QUERY, {
+    phaseId,
+    page,
+    perPage,
+  });
+  return data.phase.sets.nodes;
+};
+
+// Get set by ID
+const getSetById = async (setId) => {
+  if (!setId) {
+    throw new Error('Set ID is required');
   }
+  
+  try {
+    const data = await fetchWithRetry(GET_SET_BY_ID_QUERY, { setId });
+    return data.set;
+  } catch (error) {
+    console.error(`Error fetching set ${setId}:`, error);
+    return null;
+  }
+};
+
+// API methods object
+const startGGApi = {
+  getFeaturedTournaments,
+  getTournaments,
+  getTournamentDetails,
+  getSetsByPhase,
+  getSetById // Added the new method
 };
 
 module.exports = {

@@ -11,7 +11,7 @@ const transactionSchema = new Schema({
   },
   type: {
     type: String,
-    enum: ['deposit', 'withdrawal', 'bet', 'win', 'refund'],
+    enum: ['deposit', 'withdrawal', 'bet', 'win', 'refund','commission'],
     required: true,
     index: true
   },
