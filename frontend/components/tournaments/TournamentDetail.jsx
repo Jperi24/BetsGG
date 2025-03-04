@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Calendar, MapPin, Users, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import TournamentBetsTab from './TournamentBetsTab';
 
 // Define tab type
 const tabs = [
@@ -290,50 +291,8 @@ const TournamentDetail = ({ tournament }) => {
                 </Link>
               </div>
               
-              <div className="space-y-4">
-                {/* We'll load bets for this tournament from the API */}
-                <div className="bg-gray-50 p-4 rounded-md">
-                  <p className="text-sm text-gray-500">
-                    Loading active bets for this tournament...
-                  </p>
-                </div>
-                
-                {/* This would be replaced with actual bet data */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                  <div className="border border-gray-200 rounded-md p-4 hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-medium text-gray-900">Sample Match</h4>
-                        <p className="text-sm text-gray-500">Quarterfinals - Game 1</p>
-                      </div>
-                      <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-medium">
-                        Open
-                      </span>
-                    </div>
-                    
-                    <div className="mt-4 flex justify-between items-center">
-                      <div className="text-center flex-1">
-                        <p className="font-medium">Player 1</p>
-                        <p className="text-xs text-gray-500">Odds: 1.5x</p>
-                      </div>
-                      
-                      <div className="mx-2 text-gray-400">VS</div>
-                      
-                      <div className="text-center flex-1">
-                        <p className="font-medium">Player 2</p>
-                        <p className="text-xs text-gray-500">Odds: 2.8x</p>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between text-sm">
-                      <span className="text-gray-500">Pool: 0.5 ETH</span>
-                      <Link href="/bet/sample-id" className="text-indigo-600 hover:text-indigo-800">
-                        Place Bet
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {/* Render TournamentBetsTab component */}
+              <TournamentBetsTab tournament={tournament} />
             </div>
           )}
         </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/providers/auth-providers';
 import { getBetById, claimWinnings } from '@/lib/api/bets';
-import { Loader, AlertCircle, Award, ArrowLeft, TrendingUp, Clock, CheckCircle } from 'lucide-react';
+import { Loader, AlertCircle, Award, ArrowLeft, TrendingUp, Clock, CheckCircle, Trophy } from 'lucide-react';
 import PlaceBetForm from './place-bet';
 
 const BetDetails = ({ betId }) => {
@@ -179,6 +179,23 @@ const BetDetails = ({ betId }) => {
         <div className="p-6">
           <h2 className="text-lg font-medium text-gray-900 mb-4">{bet.matchName}</h2>
           
+          {/* Winner Banner - Only show when bet is completed and has a winner */}
+          {bet.status === 'completed' && bet.winner > 0 && (
+            <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-center justify-center">
+              <div className="text-center">
+                <div className="flex items-center justify-center mb-2">
+                  <Trophy className="h-8 w-8 text-green-600 mr-2" />
+                  <h3 className="text-xl font-bold text-green-800">
+                    Winner: {bet.winner === 1 ? bet.contestant1.name : bet.contestant2.name}
+                  </h3>
+                </div>
+                <p className="text-green-600">
+                  Final result determined on {formatDate(bet.resultDeterminedAt)}
+                </p>
+              </div>
+            </div>
+          )}
+          
           {/* Match Info */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
             <div className="md:col-span-3">
@@ -215,13 +232,18 @@ const BetDetails = ({ betId }) => {
           {/* Contestant Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Contestant 1 */}
-            <div className={`border rounded-lg p-6 ${
+            <div className={`border rounded-lg p-6 relative ${
               bet.winner === 1 
                 ? 'border-green-400 bg-green-50' 
                 : userParticipation?.prediction === 1
                   ? 'border-blue-400 bg-blue-50'
                   : 'border-gray-200'
             }`}>
+              {bet.winner === 1 && (
+                <div className="absolute -top-4 -right-4 bg-green-500 text-white rounded-full p-2">
+                  <Trophy className="h-6 w-6" />
+                </div>
+              )}
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium">{bet.contestant1.name}</h3>
                 {bet.winner === 1 && (
@@ -245,19 +267,34 @@ const BetDetails = ({ betId }) => {
                 {userParticipation?.prediction === 1 && (
                   <div className="mt-4 p-2 bg-blue-100 text-blue-800 rounded text-sm">
                     Your bet: {userParticipation.amount.toFixed(4)} ETH
+                    {bet.winner === 1 && !userParticipation.claimed && (
+                      <span className="block mt-1 text-green-600 font-semibold">
+                        You won! Claim your winnings below.
+                      </span>
+                    )}
+                    {bet.winner === 1 && userParticipation.claimed && (
+                      <span className="block mt-1 text-green-600 font-semibold">
+                        Winnings claimed!
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
             </div>
             
             {/* Contestant 2 */}
-            <div className={`border rounded-lg p-6 ${
+            <div className={`border rounded-lg p-6 relative ${
               bet.winner === 2 
                 ? 'border-green-400 bg-green-50' 
                 : userParticipation?.prediction === 2
                   ? 'border-blue-400 bg-blue-50'
                   : 'border-gray-200'
             }`}>
+              {bet.winner === 2 && (
+                <div className="absolute -top-4 -right-4 bg-green-500 text-white rounded-full p-2">
+                  <Trophy className="h-6 w-6" />
+                </div>
+              )}
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium">{bet.contestant2.name}</h3>
                 {bet.winner === 2 && (
@@ -281,11 +318,44 @@ const BetDetails = ({ betId }) => {
                 {userParticipation?.prediction === 2 && (
                   <div className="mt-4 p-2 bg-blue-100 text-blue-800 rounded text-sm">
                     Your bet: {userParticipation.amount.toFixed(4)} ETH
+                    {bet.winner === 2 && !userParticipation.claimed && (
+                      <span className="block mt-1 text-green-600 font-semibold">
+                        You won! Claim your winnings below.
+                      </span>
+                    )}
+                    {bet.winner === 2 && userParticipation.claimed && (
+                      <span className="block mt-1 text-green-600 font-semibold">
+                        Winnings claimed!
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
             </div>
           </div>
+          
+          {/* Match Result - Show for completed bets with a winner */}
+          {bet.status === 'completed' && bet.winner > 0 && (
+            <div className="mt-8 bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Match Result</h3>
+              <p className="text-gray-700">
+                {bet.winner === 1 ? bet.contestant1.name : bet.contestant2.name} has won this match. 
+                {userParticipation && userParticipation.prediction === bet.winner ? (
+                  userParticipation.claimed ? 
+                    " You have already claimed your winnings." : 
+                    " You can claim your winnings below."
+                ) : userParticipation ? 
+                  " Unfortunately, you bet on the other contestant." : 
+                  " You did not participate in this bet."
+                }
+              </p>
+              {bet.resultDeterminedAt && (
+                <p className="text-sm text-gray-500 mt-2">
+                  Result was determined on {formatDate(bet.resultDeterminedAt)}
+                </p>
+              )}
+            </div>
+          )}
           
           {/* Claim Winnings Button */}
           {canClaimWinnings() && (
@@ -294,9 +364,7 @@ const BetDetails = ({ betId }) => {
                 <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-md">
                   <div className="flex">
                     <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
+                      <CheckCircle className="h-5 w-5 text-green-400" />
                     </div>
                     <div className="ml-3">
                       <p className="text-sm leading-5 text-green-700">

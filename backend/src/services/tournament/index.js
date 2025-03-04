@@ -268,14 +268,14 @@ const updateOngoingTournaments = async () => {
  * Get tournament details from cache or database
  */
 const getTournamentBySlug = async (slug) => {
-  console.log("THIS HAS BEEN CALLED")
+
   if (!slug) {
     throw new AppError('Tournament slug is required', 400);
   }
   
   
   const normalizedSlug = 'tournament/' + slug.toLowerCase();
-  console.log('normalizeed slug',normalizedSlug)
+  
   
   // Try to get from cache first
   let tournament = dailyCache.get(normalizedSlug);
@@ -325,10 +325,14 @@ const getSetsByPhaseId = async (phaseId) => {
     throw new AppError('Phase ID is required', 400);
   }
   
+  
   const phaseKey = `phase:${phaseId}`;
   
   // Try to get from cache first
   let sets = frequentCache.get(phaseKey);
+
+
+
   
   // If not in cache, fetch from API
   if (!sets) {

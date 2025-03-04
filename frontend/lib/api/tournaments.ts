@@ -105,3 +105,4 @@ export const searchTournaments = async (query: string): Promise<{ data: { tourna
   const response = await apiClient.get(`/tournaments/search?query=${encodeURIComponent(query)}`);
   return handleApiResponse(response);
 };
+

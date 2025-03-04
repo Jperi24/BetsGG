@@ -10,8 +10,11 @@ const { AppError } = require('../../middleware/error');
  * Create a new bet
  */
 const createBet = async (betData, userId) => {
+  
+
   const session = await mongoose.startSession();
   session.startTransaction();
+  
 
   try {
     // Validate tournament exists
@@ -31,13 +34,21 @@ const createBet = async (betData, userId) => {
       throw new AppError('Phase not found in event', 404);
     }
 
+    
+    
+
     // Get sets for this phase to find the specific match
     const sets = await tournamentService.getSetsByPhaseId(betData.phaseId);
-    const set = sets.find(s => s.id === betData.setId);
+    
+    const set = sets.find(s => String(s.id) === String(betData.setId));
+
+
+    
     
     if (!set) {
       throw new AppError('Match not found in phase', 404);
     }
+    
 
     // Validate match has two contestants
     if (!set.slots || set.slots.length !== 2 || !set.slots[0].entrant || !set.slots[1].entrant) {
@@ -52,6 +63,7 @@ const createBet = async (betData, userId) => {
     if (betData.maximumBet < betData.minimumBet) {
       throw new AppError('Maximum bet must be greater than minimum bet', 400);
     }
+    
 
     // Create new bet
     const newBet = new Bet({
@@ -206,6 +218,7 @@ const getBetById = async (betId) => {
  * Get bets by tournament
  */
 const getBetsByTournament = async (tournamentSlug, status) => {
+  console.log("Get Bets BY Tournament Called")
   const query = { tournamentSlug };
   
   if (status) {

@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 // Define protected routes that require authentication
 const protectedRoutes = [
   '/dashboard',
-  '/bet/',
-  '/bets',
+  // '/bet/',
+  // '/bets',
   '/wallet',
 ];
 
@@ -46,8 +46,8 @@ export function middleware(request) {
 export const config = {
   matcher: [
     '/dashboard/:path*',
-    '/bet/:path*',
-    '/bets/:path*',
+    // '/bet/:path*',
+    // '/bets/:path*',
     '/wallet/:path*',
     '/login',
     '/register',

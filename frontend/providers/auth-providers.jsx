@@ -50,7 +50,6 @@ export function AuthProvider({ children }) {
     initializeAuth();
   }, []);
 
-  // Login function
   const login = async (email, password) => {
     setIsLoading(true);
     try {
@@ -61,7 +60,7 @@ export function AuthProvider({ children }) {
       setIsLoading(false);
     }
   };
-
+  
   // Register function
   const register = async (username, email, password) => {
     setIsLoading(true);
@@ -73,11 +72,11 @@ export function AuthProvider({ children }) {
       setIsLoading(false);
     }
   };
-
   // Logout function
   const logout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
+      document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
     }
     setUser(null);
     setToken(null);
@@ -95,19 +94,24 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Helper function to handle auth response
-  const handleAuthResponse = (response) => {
-    const { token, data } = response;
+  
+
+  // In auth-providers.jsx, add a function to handle auth response:
+const handleAuthResponse = (response) => {
+  const { token, data } = response;
+  
+  // Store token in localStorage for client-side auth
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('token', token);
     
-    // Store token in localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('token', token);
-    }
-    
-    // Update state
-    setToken(token);
-    setUser(data.user);
-  };
+    // Also set a cookie for middleware
+    document.cookie = `token=${token}; path=/; max-age=${60*60*24*7}`; // 7 days
+  }
+  
+  // Update state
+  setToken(token);
+  setUser(data.user);
+};
 
   // Context value
   const value = {

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'; // Import useSearchParams
 import MainLayout from '@/components/layout/MainLayout';
 import CreateBetForm from '@/components/betting/CreateBetForm';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -10,7 +10,8 @@ import { Loader, AlertCircle } from 'lucide-react';
 
 const CreateBetPage = () => {
   const router = useRouter();
-  const { tournament: tournamentSlug } = router.query;
+  const searchParams = useSearchParams(); // Use this hook instead
+  const tournamentSlug = searchParams.get('tournament'); // Get the 'tournament' parameter
   
   const [loading, setLoading] = useState(true);
   const [tournaments, setTournaments] = useState([]);
@@ -42,6 +43,8 @@ const CreateBetPage = () => {
     
     loadTournaments();
   }, [tournamentSlug]);
+  
+  // Rest of your component remains the same...
   
   // Handle tournament selection
   const handleTournamentSelect = (slug) => {

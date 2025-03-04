@@ -33,6 +33,8 @@ async function startServer() {
     
     // Setup scheduled updates for bet statuses
     betUpdateService.setupScheduledUpdates(10); // Check every 10 minutes
+
+ 
     
     // Start server
     const PORT = process.env.PORT || 3001;

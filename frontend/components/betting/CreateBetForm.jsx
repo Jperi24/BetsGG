@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation';
 import { Loader, AlertCircle, Info } from 'lucide-react';
 import { createBet } from '@/lib/api/bets';
 import { getTournamentBySlug, getSetsByPhaseId } from '@/lib/api/tournaments';
@@ -19,6 +19,7 @@ const CreateBetForm = ({ tournamentSlug }) => {
   const [selectedPhase, setSelectedPhase] = useState('');
   const [selectedSet, setSelectedSet] = useState('');
   const [availableSets, setAvailableSets] = useState([]);
+  const [revisedSlug,setRevisedSlug]= useState('');
   
   // Bet parameters
   const [minBet, setMinBet] = useState('0.001');
@@ -31,7 +32,12 @@ const CreateBetForm = ({ tournamentSlug }) => {
       
       try {
         setLoading(true);
-        const response = await getTournamentBySlug(tournamentSlug);
+        const newSlug = tournamentSlug.replace("tournament/","")
+        setRevisedSlug(newSlug)
+
+      
+        const response = await getTournamentBySlug(newSlug);
+        console.log("Response::",response)
         setTournament(response.data.tournament);
       } catch (err) {
         setError('Failed to load tournament data. Please try again.');
@@ -122,7 +128,7 @@ const CreateBetForm = ({ tournamentSlug }) => {
       
       // Create the bet
       await createBet({
-        tournamentSlug: tournament.slug,
+        tournamentSlug: revisedSlug,
         eventId: selectedEvent,
         eventName: event.name,
         phaseId: selectedPhase,

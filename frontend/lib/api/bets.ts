@@ -90,9 +90,10 @@ export const getBetsByTournament = async (
   tournamentSlug: string, 
   status?: BetStatus
 ): Promise<{ data: { bets: Bet[] } }> => {
+  
   const url = status
-    ? `/bets/tournament/${tournamentSlug}?status=${status}`
-    : `/bets/tournament/${tournamentSlug}`;
+    ? `/bets/${tournamentSlug}?status=${status}`
+    : `/bets/${tournamentSlug}`;
   
   const response = await apiClient.get(url);
   return handleApiResponse(response);
@@ -100,8 +101,15 @@ export const getBetsByTournament = async (
 
 // Create a new bet
 export const createBet = async (data: CreateBetData): Promise<{ data: { bet: Bet } }> => {
-  const response = await apiClient.post('/bets', data);
-  return handleApiResponse(response);
+  try {
+    console.log("Frontend createBet called with data:", data);
+    const response = await apiClient.post('/bets', data);
+    console.log("Response received:", response);
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error("Error in createBet:", error);
+    throw error;
+  }
 };
 
 // Place a bet

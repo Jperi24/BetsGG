@@ -66,11 +66,10 @@ exports.getOngoingTournaments = async (req, res, next) => {
  */
 exports.getTournamentBySlug = async (req, res, next) => {
   try {
-    console.log("This is being called")
+
     const { slug } = req.params;
     const tournament = await tournamentService.getTournamentBySlug(slug);
-    console.log("SLUG",slug)
-    console.log("tournament",tournament)
+   
     
     if (!tournament) {
       return res.status(404).json({

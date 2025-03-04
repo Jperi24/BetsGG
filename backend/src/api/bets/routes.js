@@ -27,7 +27,7 @@ router.get(
 );
 
 router.get(
-  '/tournament/:tournamentSlug',
+  '/tournament/tournamentSlug',
   [
     param('tournamentSlug')
       .isString()
