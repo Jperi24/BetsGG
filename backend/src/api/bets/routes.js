@@ -26,8 +26,11 @@ router.get(
   betsController.getBetById
 );
 
+
+
+// Fix the route to use a parameter for tournament slug
 router.get(
-  '/tournament/tournamentSlug',
+  '/tournament/:tournamentSlug',
   [
     param('tournamentSlug')
       .isString()
@@ -42,6 +45,8 @@ router.get(
 
 // Protected routes (require authentication)
 router.use(protect);
+
+
 
 router.post(
   '/',

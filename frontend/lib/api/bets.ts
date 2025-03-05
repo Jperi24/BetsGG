@@ -86,14 +86,14 @@ export const getBetById = async (betId: string): Promise<{
 };
 
 // Get bets by tournament
+// Updated getBetsByTournament function for lib/api/bets.ts
 export const getBetsByTournament = async (
   tournamentSlug: string, 
   status?: BetStatus
 ): Promise<{ data: { bets: Bet[] } }> => {
-  
   const url = status
-    ? `/bets/${tournamentSlug}?status=${status}`
-    : `/bets/${tournamentSlug}`;
+    ? `/bets/tournament/${tournamentSlug}?status=${status}`
+    : `/bets/tournament/${tournamentSlug}`;
   
   const response = await apiClient.get(url);
   return handleApiResponse(response);

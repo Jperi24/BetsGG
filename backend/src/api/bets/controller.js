@@ -88,10 +88,13 @@ exports.getBetById = async (req, res, next) => {
 /**
  * Get bets by tournament
  */
+// Update to the getBetsByTournament controller function
 exports.getBetsByTournament = async (req, res, next) => {
   try {
     const { tournamentSlug } = req.params;
     const { status } = req.query;
+    
+    console.log(`Getting bets for tournament: ${tournamentSlug}, status: ${status || 'all'}`);
     
     const bets = await bettingService.getBetsByTournament(tournamentSlug, status);
     
@@ -103,6 +106,7 @@ exports.getBetsByTournament = async (req, res, next) => {
       }
     });
   } catch (error) {
+    console.error(`Error in getBetsByTournament: ${error.message}`);
     next(error);
   }
 };

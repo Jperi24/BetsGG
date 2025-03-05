@@ -218,16 +218,33 @@ const getBetById = async (betId) => {
  * Get bets by tournament
  */
 const getBetsByTournament = async (tournamentSlug, status) => {
-  console.log("Get Bets BY Tournament Called")
-  const query = { tournamentSlug };
-  
-  if (status) {
-    query.status = status;
+  try {
+    console.log(`Betting service: Getting bets for tournament slug: ${tournamentSlug}, status: ${status || 'all'}`);
+    
+    if (!tournamentSlug) {
+      throw new AppError('Tournament slug is required', 400);
+    }
+    
+    // Clean up the tournament slug - remove any "tournament/" prefix if present
+    const cleanSlug = tournamentSlug.replace(/^tournament\//, '');
+    
+    // Construct the query
+    const query = { tournamentSlug: cleanSlug };
+    if (status) {
+      query.status = status;
+    }
+    
+    // Find bets matching the query
+    const bets = await Bet.find(query)
+      .populate('creator', 'username')
+      .sort({ createdAt: -1 });
+    
+    console.log(`Found ${bets.length} bets for tournament ${cleanSlug}`);
+    return bets;
+  } catch (error) {
+    console.error(`Error in getBetsByTournament: ${error.message}`);
+    throw error;
   }
-  
-  return await Bet.find(query)
-    .populate('creator', 'username')
-    .sort({ createdAt: -1 });
 };
 
 /**

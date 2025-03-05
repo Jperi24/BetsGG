@@ -13,14 +13,24 @@ const TournamentBetsTab = ({ tournament }) => {
   
   useEffect(() => {
     const loadBets = async () => {
-      if (!tournament || !tournament.slug) return;
+      if (!tournament || !tournament.slug) {
+        console.error('Tournament or tournament slug is missing');
+        setError('Tournament information is incomplete');
+        setLoading(false);
+        return;
+      }
       
       try {
         setLoading(true);
         setError(null);
         
+        console.log(`Fetching bets for tournament slug: ${tournament.slug}`);
         const betsResponse = await getBetsByTournament(tournament.slug);
-        console.log("THIS IS RAN")
+        console.log('Bets response:', betsResponse);
+        
+        if (!betsResponse || !betsResponse.data || !betsResponse.data.bets) {
+          throw new Error('Invalid response from server');
+        }
         
         setBets(betsResponse.data.bets);
         
@@ -41,8 +51,8 @@ const TournamentBetsTab = ({ tournament }) => {
           setUserPredictions(predictions);
         }
       } catch (err) {
-        setError('Failed to load bets. Please try again.');
-        console.error(err);
+        console.error('Error loading bets:', err);
+        setError(`Failed to load bets: ${err.message || 'Unknown error'}`);
       } finally {
         setLoading(false);
       }
@@ -105,6 +115,9 @@ const TournamentBetsTab = ({ tournament }) => {
           <AlertCircle className="h-5 w-5 text-red-400" />
           <div className="ml-3">
             <p className="text-sm text-red-700">{error}</p>
+            <p className="text-xs text-red-500 mt-1">
+              Tournament slug: {tournament?.slug || 'undefined'}
+            </p>
           </div>
         </div>
       </div>
