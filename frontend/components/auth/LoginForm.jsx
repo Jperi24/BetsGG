@@ -16,29 +16,34 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
   
   console.log('LoginForm mounted with redirectPath:', redirectPath);
   
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Validate inputs
-    if (!email || !password) {
-      setError('Please enter both email and password');
-      return;
-    }
-    
+ // components/auth/LoginForm.jsx
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  try {
     setIsLoading(true);
     setError(null);
     
-    try {
-      await login(email, password);
+    // Log request details
+    console.log('Attempting login with:', { email });
+    
+    const response = await login(email, password);
+    console.log('Login response:', response);
+    
+    // Ensure we have a valid response before redirecting
+    if (response && response.token) {
       const decodedPath = decodeURIComponent(redirectPath);
       router.push(decodedPath);
-    } catch (err) {
-      console.error('Login error:', err);
-      setError(err.message || 'Failed to log in. Please check your credentials.');
-    } finally {
-      setIsLoading(false);
+    } else {
+      throw new Error('Invalid response from server');
     }
-  };
+  } catch (err) {
+    console.error('Login error:', err);
+    setError(err.message || 'Failed to log in. Please check your credentials.');
+  } finally {
+    setIsLoading(false);
+  }
+};
   
   return (
     <div className="w-full max-w-md mx-auto">

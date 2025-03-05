@@ -50,16 +50,29 @@ export function AuthProvider({ children }) {
     initializeAuth();
   }, []);
 
-  const login = async (email, password) => {
-    setIsLoading(true);
-    try {
-      const response = await apiLogin({ email, password });
-      handleAuthResponse(response);
-      return response;
-    } finally {
-      setIsLoading(false);
+  // In login function
+// providers/auth-providers.jsx
+const login = async (email, password) => {
+  setIsLoading(true);
+  try {
+    const response = await apiLogin({ email, password });
+    console.log('Auth provider login response:', response);
+    
+    if (!response || !response.token) {
+      throw new Error('Invalid response from server');
     }
-  };
+    
+    handleAuthResponse(response);
+    return response;
+  } catch (error) {
+    console.error('Auth provider login error:', error);
+    throw error;
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+
   
   // Register function
   const register = async (username, email, password) => {
@@ -96,22 +109,25 @@ export function AuthProvider({ children }) {
 
   
 
-  // In auth-providers.jsx, add a function to handle auth response:
-const handleAuthResponse = (response) => {
-  const { token, data } = response;
-  
-  // Store token in localStorage for client-side auth
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('token', token);
+  const handleAuthResponse = (response) => {
+    if (!response || !response.token || !response.data || !response.data.user) {
+      throw new Error('Invalid authentication response');
+    }
     
-    // Also set a cookie for middleware
-    document.cookie = `token=${token}; path=/; max-age=${60*60*24*7}`; // 7 days
-  }
-  
-  // Update state
-  setToken(token);
-  setUser(data.user);
-};
+    const { token, data } = response;
+    
+    // Store token in localStorage for client-side auth
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('token', token);
+      
+      // Also set a cookie for middleware
+      document.cookie = `token=${token}; path=/; max-age=${60*60*24*7}`; // 7 days
+    }
+    
+    // Update state
+    setToken(token);
+    setUser(data.user);
+  };
 
   // Context value
   const value = {

@@ -54,6 +54,7 @@ exports.register = async (req, res, next) => {
 // Log in user
 exports.login = async (req, res, next) => {
   try {
+
     const { email, password } = req.body;
     
     // Check if email and password exist
@@ -66,6 +67,7 @@ exports.login = async (req, res, next) => {
     
     // Find user by email and include password field
     const user = await User.findOne({ email }).select('+password');
+  
     
     // Check if user exists & password is correct
     if (!user || !(await user.comparePassword(password))) {
@@ -74,9 +76,11 @@ exports.login = async (req, res, next) => {
         message: 'Incorrect email or password'
       });
     }
+   
     
     // Generate JWT and send response
     createSendToken(user, 200, res);
+
   } catch (error) {
     next(error);
   }

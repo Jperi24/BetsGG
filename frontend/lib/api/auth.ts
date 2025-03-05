@@ -34,6 +34,7 @@ export const register = async (data: RegisterData): Promise<AuthResponse> => {
 
 // Login user
 export const login = async (credentials: LoginCredentials): Promise<AuthResponse> => {
+  console.log("Calling frontend login api")
   const response = await apiClient.post('/auth/login', credentials);
   return handleApiResponse(response);
 };

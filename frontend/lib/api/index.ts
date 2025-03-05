@@ -1,28 +1,52 @@
-// Utility for handling API responses
-export const handleApiResponse = (response: any) => {
-  if (!response.data) {
-    throw new Error('No data received');
-  }
-  return response.data;
-};
+// frontend/lib/api/index.ts
 
-// lib/api/index.ts
 import axios from 'axios';
 
-// Create an instance of axios with default config
+// Utility for handling API responses
+export const handleApiResponse = (response: any) => {
+  // Check if response exists
+  if (!response) {
+    throw new Error('No response received');
+  }
+
+  // For auth endpoints that return token
+  if (response.data?.status === 'success' && response.data?.token) {
+    return {
+      token: response.data.token,
+      data: response.data.data
+    };
+  }
+
+  // For other successful responses
+  if (response.data?.status === 'success') {
+    return response.data;
+  }
+
+  // If we get here, something's wrong with the response format
+  throw new Error('Invalid response format');
+};
+
+// Create axios instance
 const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
-  timeout: 10000,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  withCredentials: true
 });
 
-
-
-// Add a request interceptor to add auth token
+// Request interceptor
 apiClient.interceptors.request.use(
   (config) => {
+    console.log('API Request:', {
+      method: config.method,
+      url: config.url,
+      baseURL: config.baseURL,
+      data: config.data,
+      headers: config.headers
+    });
+
     // Get token from localStorage if we're in a browser environment
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('token');
@@ -32,28 +56,61 @@ apiClient.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    console.error('API Request Error:', error);
+    return Promise.reject(error);
+  }
 );
 
-// Add a response interceptor to handle common errors
+// Response interceptor
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log('API Response:', {
+      status: response.status,
+      data: response.data,
+      headers: response.headers
+    });
+    return response;
+  },
   (error) => {
-    // Handle session expiration
-    if (error.response?.status === 401) {
-      // Only clear storage and redirect on the client side
+    console.error('API Response Error:', {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+      code: error.code
+    });
+
+    // Handle different types of errors
+    if (error.code === 'ECONNABORTED') {
+      return Promise.reject({
+        status: 408,
+        message: 'Request timeout - server took too long to respond',
+        errors: null
+      });
+    }
+
+    if (!error.response) {
+      return Promise.reject({
+        status: 503,
+        message: 'Network error - unable to connect to server',
+        errors: null
+      });
+    }
+
+    // Handle specific status codes
+    if (error.response.status === 401) {
+      // Clear auth data
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
         // Redirect to login page
         window.location.href = '/login';
       }
     }
-    
-    // Return a cleaned error object
+
     return Promise.reject({
-      status: error.response?.status,
-      message: error.response?.data?.message || error.message,
-      errors: error.response?.data?.errors
+      status: error.response.status,
+      message: error.response.data?.message || error.message,
+      errors: error.response.data?.errors || null
     });
   }
 );

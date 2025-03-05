@@ -46,7 +46,7 @@ const fetchAllTournaments = async () => {
     while (hasMore) {
       try {
         // Sleep to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 300));
         
         // Fetch featured tournaments
         const tournaments = await startGGApi.getFeaturedTournaments(
@@ -83,7 +83,7 @@ const fetchAllTournaments = async () => {
       while (hasMore && allTournaments.length < 100) {
         try {
           // Sleep to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await new Promise(resolve => setTimeout(resolve, 300));
           
           // Fetch regular tournaments
           const result = await startGGApi.getTournaments(
@@ -419,6 +419,7 @@ const getOngoingTournaments = async (limit = 20) => {
  */
 const initializeCache = async () => {
   console.log('Initializing tournament cache...');
+
   
   
   // Check if we have cached tournaments in the database
