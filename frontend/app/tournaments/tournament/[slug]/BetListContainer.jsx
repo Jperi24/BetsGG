@@ -22,6 +22,7 @@ const BetListContainer = ({ tournamentSlug }) => {
         
         // Get bets for this tournament
         const betsResponse = await getBetsByTournament(tournamentSlug);
+  
         setBets(betsResponse.data.bets);
         
         // If user is logged in, extract their predictions

@@ -31,6 +31,7 @@ export default function BetList({
   // Update filtered bets when the initial bets, search query, or filter changes
   useEffect(() => {
     let filtered = initialBets;
+    console.log("Initial Bets ",initialBets)
     
     // Apply search filter if query exists
     if (searchQuery) {
