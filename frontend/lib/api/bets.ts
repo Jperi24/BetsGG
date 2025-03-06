@@ -91,11 +91,12 @@ export const getBetsByTournament = async (
   tournamentSlug: string, 
   status?: BetStatus
 ): Promise<{ data: { bets: Bet[] } }> => {
-  // Make sure the full slug (with tournament/ prefix) is passed correctly
+  // Ensure we have the correct URL format
   const url = status
-    ? `/bets/${tournamentSlug}?status=${status}`
-    : `/bets/${tournamentSlug}`;
+    ? `/bets/tournament/${tournamentSlug}?status=${status}`
+    : `/bets/tournament/${tournamentSlug}`;
   
+  console.log(`Making request to: ${url}`);
   const response = await apiClient.get(url);
   return handleApiResponse(response);
 };

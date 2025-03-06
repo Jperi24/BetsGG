@@ -63,12 +63,16 @@ const createBet = async (betData, userId) => {
     if (betData.maximumBet < betData.minimumBet) {
       throw new AppError('Maximum bet must be greater than minimum bet', 400);
     }
+
+    const cleanSlug = tournament.slug.replace(/^tournament\//, ""); 
+   
+    
     
 
     // Create new bet
     const newBet = new Bet({
       tournamentId: tournament.id,
-      tournamentSlug: tournament.slug,
+      tournamentSlug: cleanSlug,
       tournamentName: tournament.name,
       eventId: event.id,
       eventName: event.name,
@@ -226,10 +230,11 @@ const getBetsByTournament = async (tournamentSlug, status) => {
     }
     
     // Clean up the tournament slug - remove any "tournament/" prefix if present
-    const cleanSlug = tournamentSlug.replace(/^tournament\//, '');
+    console.log("Querying on slug",tournamentSlug)
+    
     
     // Construct the query
-    const query = { tournamentSlug: cleanSlug };
+    const query = { tournamentSlug: tournamentSlug };
     if (status) {
       query.status = status;
     }
@@ -239,7 +244,7 @@ const getBetsByTournament = async (tournamentSlug, status) => {
       .populate('creator', 'username')
       .sort({ createdAt: -1 });
     
-    console.log(`Found ${bets.length} bets for tournament ${cleanSlug}`);
+    console.log(`Found ${bets.length} bets for tournament ${tournamentSlug}`);
     return bets;
   } catch (error) {
     console.error(`Error in getBetsByTournament: ${error.message}`);

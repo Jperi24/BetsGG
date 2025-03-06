@@ -25,8 +25,10 @@ const TournamentBetsTab = ({ tournament }) => {
         setError(null);
         
         console.log(`Fetching bets for tournament slug: ${tournament.slug}`);
-        const betsResponse = await getBetsByTournament(tournament.slug);
-        console.log('Bets response:', betsResponse);
+        const cleanSlug = tournament.slug.replace(/^tournament\//, ""); 
+        console.log(`CLEAN SLUG: ${cleanSlug}`);
+        const betsResponse = await getBetsByTournament(cleanSlug);
+        
         
         if (!betsResponse || !betsResponse.data || !betsResponse.data.bets) {
           throw new Error('Invalid response from server');
