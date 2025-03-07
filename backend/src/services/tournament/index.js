@@ -325,10 +325,14 @@ const getSetsByPhaseId = async (phaseId) => {
     throw new AppError('Phase ID is required', 400);
   }
   
+  
   const phaseKey = `phase:${phaseId}`;
   
   // Try to get from cache first
   let sets = frequentCache.get(phaseKey);
+
+
+
   
   // If not in cache, fetch from API
   if (!sets) {
@@ -342,77 +346,14 @@ const getSetsByPhaseId = async (phaseId) => {
       throw new AppError('Failed to fetch sets from Start.GG API', 500);
     }
   }
-  
-  // Mark the completion status of each set
   sets = sets.map(set => {
     return {
       ...set,
       isCompleted: set.state === 3, // 3 indicates completed status
       isInProgress: set.state === 2, // 2 indicates in-progress status
     };
-  });
-  
+  });  
   return sets;
-};
-
-/**
- * Check if a tournament is still active
- */
-const isTournamentActive = async (slug) => {
-  if (!slug) {
-    throw new AppError('Tournament slug is required', 400);
-  }
-  
-  // Get tournament details
-  const tournament = await getTournamentBySlug(slug);
-  if (!tournament) {
-    throw new AppError('Tournament not found', 404);
-  }
-  
-  // Check if tournament has ended
-  const currentTime = Math.floor(Date.now() / 1000);
-  return tournament.endAt >= currentTime;
-};
-
-/**
- * Check if a phase is still active
- */
-const isPhaseActive = async (phaseId) => {
-  if (!phaseId) {
-    throw new AppError('Phase ID is required', 400);
-  }
-  
-  // Get sets for this phase
-  const sets = await getSetsByPhaseId(phaseId);
-  
-  // If all sets are completed, phase is not active
-  const allCompleted = sets.every(set => set.state === 3);
-  
-  return !allCompleted;
-};
-
-/**
- * Check if a set is still open for betting
- */
-const isSetOpenForBetting = async (setId) => {
-  if (!setId) {
-    throw new AppError('Set ID is required', 400);
-  }
-  
-  try {
-    // Get set details directly from API to ensure freshness
-    const set = await startGGApi.getSetById(setId);
-    
-    if (!set) {
-      throw new AppError('Match not found', 404);
-    }
-    
-    // Check if set is not completed or in progress
-    return set.state !== 3 && set.state !== 2;
-  } catch (error) {
-    console.error(`Error checking set status for ${setId}:`, error);
-    throw new AppError('Failed to check match status', 500);
-  }
 };
 
 /**
@@ -519,9 +460,6 @@ module.exports = {
   updateOngoingTournaments,
   getTournamentBySlug,
   getSetsByPhaseId,
-  isTournamentActive,
-  isPhaseActive,
-  isSetOpenForBetting,
   getFeaturedTournaments,
   getUpcomingTournaments,
   getOngoingTournaments,
