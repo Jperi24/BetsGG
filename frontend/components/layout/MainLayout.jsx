@@ -1,8 +1,7 @@
+// frontend/components/layout/MainLayout.jsx
 'use client';
 
 import React from 'react';
-import Navbar from './navbar';
-import Footer from './footer';
 import { usePathname } from 'next/navigation';
 
 const MainLayout = ({ children, title = 'EsportsBets - Bet on Esports Tournaments' }) => {
@@ -37,14 +36,8 @@ const MainLayout = ({ children, title = 'EsportsBets - Bet on Esports Tournament
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </head>
       
-      <div className="min-h-screen flex flex-col bg-gray-50">
-        <Navbar />
-        
-        <main className="flex-grow">
-          {children}
-        </main>
-        
-        <Footer />
+      <div className="container mx-auto px-4 py-8">
+        {children}
       </div>
     </>
   );

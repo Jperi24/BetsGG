@@ -54,6 +54,9 @@ const TournamentsPage = () => {
     
     loadTournaments();
   }, [activeTab]);
+
+
+
   
   // Get current tournaments based on active tab
   const getCurrentTournaments = () => {
