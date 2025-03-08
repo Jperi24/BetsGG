@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/providers/auth-providers';
-import { Menu, X, User, LogOut, Wallet, Trophy, Home } from 'lucide-react';
+import { Menu, X, User, LogOut, Wallet, Trophy, Home, Info } from 'lucide-react';
 
 export default function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
@@ -44,6 +44,18 @@ export default function Navbar() {
                 } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
               >
                 Home
+              </Link>
+              
+              {/* How It Works Link - Desktop */}
+              <Link
+                href="/how-it-works"
+                className={`${
+                  isActive('/how-it-works') 
+                    ? 'border-white text-white' 
+                    : 'border-transparent text-indigo-100 hover:border-indigo-200 hover:text-white'
+                } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
+              >
+                Platform Overview
               </Link>
               
               <Link
@@ -164,6 +176,22 @@ export default function Navbar() {
             <div className="flex items-center">
               <Home className="h-5 w-5 mr-2" />
               Home
+            </div>
+          </Link>
+          
+          {/* How It Works Link - Mobile */}
+          <Link
+            href="/how-it-works"
+            className={`${
+              isActive('/how-it-works') 
+                ? 'bg-indigo-700 text-white' 
+                : 'text-indigo-100 hover:bg-indigo-500 hover:text-white'
+            } block px-3 py-2 rounded-md text-base font-medium`}
+            onClick={() => setIsMenuOpen(false)}
+          >
+            <div className="flex items-center">
+              <Info className="h-5 w-5 mr-2" />
+              How It Works
             </div>
           </Link>
           

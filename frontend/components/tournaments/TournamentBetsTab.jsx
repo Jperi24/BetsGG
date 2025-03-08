@@ -197,14 +197,7 @@ const TournamentBetsTab = ({ tournament }) => {
         ))}
       </div>
       
-      <div className="text-center mt-6">
-        <Link
-          href={`/bets/create?tournament=${tournament.slug}`}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
-        >
-          Create New Bet
-        </Link>
-      </div>
+     
     </div>
   );
 };

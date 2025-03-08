@@ -4,8 +4,6 @@ import React, { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import TournamentList from '@/components/tournaments/tournament-list';
 import { getFeaturedTournaments, getUpcomingTournaments, getOngoingTournaments } from '@/lib/api/tournaments';
-// Remove this line:
-// import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Search, Loader } from 'lucide-react';
 
 const TournamentsPage = () => {
@@ -55,21 +53,37 @@ const TournamentsPage = () => {
     loadTournaments();
   }, [activeTab]);
 
-
-
-  
-  // Get current tournaments based on active tab
+  // Get current tournaments based on active tab and search query
   const getCurrentTournaments = () => {
+    let tournaments;
+    
+    // Get tournaments based on active tab
     switch (activeTab) {
       case 'featured':
-        return featuredTournaments;
+        tournaments = featuredTournaments;
+        break;
       case 'upcoming':
-        return upcomingTournaments;
+        tournaments = upcomingTournaments;
+        break;
       case 'live':
-        return ongoingTournaments;
+        tournaments = ongoingTournaments;
+        break;
       default:
-        return [];
+        tournaments = [];
     }
+    
+    // If search query exists, filter tournaments
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      return tournaments.filter(tournament => 
+        tournament.name.toLowerCase().includes(query) || 
+        (tournament.city && tournament.city.toLowerCase().includes(query)) ||
+        (tournament.addrState && tournament.addrState.toLowerCase().includes(query)) ||
+        (tournament.countryCode && tournament.countryCode.toLowerCase().includes(query))
+      );
+    }
+    
+    return tournaments;
   };
   
   // Get tab title
@@ -85,6 +99,14 @@ const TournamentsPage = () => {
         return 'Tournaments';
     }
   };
+  
+  // Handle search input change
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
+  
+  // Get displayed tournaments
+  const displayedTournaments = getCurrentTournaments();
   
   return (
     <MainLayout title="Tournaments | EsportsBets">
@@ -106,7 +128,7 @@ const TournamentsPage = () => {
               type="text"
               placeholder="Search tournaments..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={handleSearchChange}
               className="pl-10 focus:ring-indigo-500 focus:border-indigo-500 block w-full rounded-md sm:text-sm border-gray-300"
             />
           </div>
@@ -164,13 +186,25 @@ const TournamentsPage = () => {
           </div>
         )}
         
+        {/* Search results info */}
+        {searchQuery.trim() && (
+          <div className="mb-4">
+            <p className="text-sm text-gray-600">
+              Found {displayedTournaments.length} {displayedTournaments.length === 1 ? 'tournament' : 'tournaments'} matching "{searchQuery}"
+            </p>
+          </div>
+        )}
+        
         {/* Tournament List */}
         <TournamentList
-          tournaments={getCurrentTournaments()}
+          tournaments={displayedTournaments}
           isLoading={loading}
           title={getTabTitle()}
           searchable={false} // We're using our own search input above
-          emptyMessage={`No ${activeTab} tournaments found.`}
+          emptyMessage={searchQuery.trim() 
+            ? `No tournaments found matching "${searchQuery}"`
+            : `No ${activeTab} tournaments found.`
+          }
         />
       </div>
     </MainLayout>

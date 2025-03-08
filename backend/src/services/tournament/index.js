@@ -34,7 +34,7 @@ const fetchAllTournaments = async () => {
     // Calculate date ranges
     const todayDate = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
     const pastDays3 = getTimestamp(-3); // 3 days ago
-    const pastDays30 = getTimestamp(-30); // 30 days ago
+    const pastDays10 = getTimestamp(-10); // 30 days ago
     const futureDays5 = getTimestamp(5); // 5 days in the future
 
     // Step 1: Fetch featured tournaments first
@@ -50,7 +50,7 @@ const fetchAllTournaments = async () => {
         
         // Fetch featured tournaments
         const tournaments = await startGGApi.getFeaturedTournaments(
-          pastDays30,
+          pastDays10,
           page,
           perPage
         );

@@ -1,11 +1,11 @@
-// app/tournaments/[slug]/BetListContainer.jsx
+// frontend/app/tournaments/tournament/[slug]/BetListContainer.jsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import BetList from '@/components/betting/bet-list';
 import { getBetsByTournament } from '@/lib/api/bets';
 import { useAuth } from '@/providers/auth-providers';
-import { Loader } from 'lucide-react';
+import { Loader, Search } from 'lucide-react';
 
 const BetListContainer = ({ tournamentSlug }) => {
   const { user } = useAuth();
@@ -13,6 +13,7 @@ const BetListContainer = ({ tournamentSlug }) => {
   const [userPredictions, setUserPredictions] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
   
   useEffect(() => {
     const loadBets = async () => {
@@ -52,6 +53,31 @@ const BetListContainer = ({ tournamentSlug }) => {
     loadBets();
   }, [tournamentSlug, user]);
   
+  // Filter bets based on search query
+  const getFilteredBets = () => {
+    if (!searchQuery.trim()) {
+      return bets;
+    }
+    
+    const query = searchQuery.toLowerCase();
+    return bets.filter(bet => 
+      bet.matchName.toLowerCase().includes(query) ||
+      bet.contestant1.name.toLowerCase().includes(query) ||
+      bet.contestant2.name.toLowerCase().includes(query) ||
+      bet.tournamentName.toLowerCase().includes(query) ||
+      bet.eventName.toLowerCase().includes(query) ||
+      bet.phaseName.toLowerCase().includes(query)
+    );
+  };
+  
+  // Handle search input change
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
+  
+  // Get displayed bets
+  const filteredBets = getFilteredBets();
+  
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
@@ -79,12 +105,45 @@ const BetListContainer = ({ tournamentSlug }) => {
   }
   
   return (
-    <BetList
-      bets={bets}
-      title=""
-      emptyMessage="No active bets for this tournament."
-      userPredictions={userPredictions}
-    />
+    <div>
+      {/* Add search input for bets */}
+      {bets.length > 0 && (
+        <div className="mb-6">
+          <div className="relative max-w-md">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-gray-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Search bets by match, contestant, event..."
+              value={searchQuery}
+              onChange={handleSearchChange}
+              className="pl-10 focus:ring-indigo-500 focus:border-indigo-500 block w-full rounded-md sm:text-sm border-gray-300"
+            />
+          </div>
+          
+          {/* Search results info */}
+          {searchQuery.trim() && (
+            <div className="mt-2">
+              <p className="text-sm text-gray-600">
+                Found {filteredBets.length} {filteredBets.length === 1 ? 'bet' : 'bets'} matching "{searchQuery}"
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+      
+      <BetList
+        bets={filteredBets}
+        title=""
+        emptyMessage={searchQuery.trim() 
+          ? `No bets found matching "${searchQuery}"`
+          : "No active bets for this tournament."
+        }
+        userPredictions={userPredictions}
+        searchable={false} // We're using our custom search now
+      />
+    </div>
   );
 };
 
