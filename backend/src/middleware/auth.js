@@ -1,8 +1,13 @@
-// src/middleware/auth.js
+// src/middleware/auth.js (Updated)
 const jwt = require('jsonwebtoken');
 const { promisify } = require('util');
 const User = require('../models/User');
+const { AppError } = require('./error');
 
+/**
+ * Protect routes - Authentication middleware
+ * Verifies JWT token and adds user to request
+ */
 exports.protect = async (req, res, next) => {
   try {
     // 1) Get token and check if it exists
@@ -33,6 +38,17 @@ exports.protect = async (req, res, next) => {
       });
     }
 
+    // 4) Check if this is a temporary token waiting for 2FA
+    if (decoded.pending2FA) {
+      // Only allow access to the 2FA verification route
+      if (req.originalUrl !== '/api/auth/verify-2fa') {
+        return res.status(401).json({
+          status: 'fail',
+          message: 'Two-factor authentication required. Please verify your identity.'
+        });
+      }
+    }
+
     // GRANT ACCESS TO PROTECTED ROUTE
     req.user = currentUser;
     next();
@@ -55,6 +71,10 @@ exports.protect = async (req, res, next) => {
   }
 };
 
+/**
+ * Restrict routes to specific user roles
+ * @param {Array} roles - Array of allowed roles
+ */
 exports.restrictTo = (...roles) => {
   return (req, res, next) => {
     // roles is an array ['admin', 'lead-guide']
@@ -66,4 +86,36 @@ exports.restrictTo = (...roles) => {
     }
     next();
   };
+};
+
+/**
+ * Require 2FA to be verified
+ * Used for sensitive operations
+ */
+exports.require2FAVerified = async (req, res, next) => {
+  try {
+    // Get the user
+    const user = await User.findById(req.user.id);
+    
+    // If 2FA is not enabled, proceed
+    if (!user.twoFactorEnabled) {
+      return next();
+    }
+    
+    // If 2FA is enabled, check if the token is a full token (not a temporary one)
+    const token = req.headers.authorization.split(' ')[1];
+    const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
+    
+    if (decoded.pending2FA) {
+      return res.status(401).json({
+        status: 'fail',
+        message: 'Two-factor authentication required for this action'
+      });
+    }
+    
+    // Proceed if 2FA is verified
+    next();
+  } catch (error) {
+    next(error);
+  }
 };

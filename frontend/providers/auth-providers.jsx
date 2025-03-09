@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import { login as apiLogin, register as apiRegister, getCurrentUser } from '@/lib/api/auth';
+import { login as apiLogin, register as apiRegister, getCurrentUser, verify2FALogin } from '@/lib/api/auth';
 
 // Create Auth Context with proper function signatures
 const AuthContext = createContext({
@@ -9,10 +9,14 @@ const AuthContext = createContext({
   token: null,
   isLoading: true,
   isAuthenticated: false,
-  login: async (email, password) => null, // Properly define parameters
-  register: async (username, email, password) => null, // Properly define parameters
+  tempToken: null,
+  requires2FA: false,
+  login: async (email, password) => null,
+  verify2FA: async (code, isRecoveryCode) => null,
+  register: async (username, email, password) => null,
   logout: () => {},
-  updateUserData: (userData) => {} // Properly define parameter
+  updateUserData: (userData) => {},
+  cancelLogin: () => {}
 });
 
 // Auth Provider Component
@@ -20,6 +24,9 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [tempToken, setTempToken] = useState(null);
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [authInitialized, setAuthInitialized] = useState(false);
 
   // Initialize auth state from localStorage on mount
   useEffect(() => {
@@ -45,34 +52,69 @@ export function AuthProvider({ children }) {
       }
       
       setIsLoading(false);
+      setAuthInitialized(true);
     };
 
     initializeAuth();
   }, []);
 
-  // In login function
-// providers/auth-providers.jsx
-const login = async (email, password) => {
-  setIsLoading(true);
-  try {
-    const response = await apiLogin({ email, password });
-    console.log('Auth provider login response:', response);
-    
-    if (!response || !response.token) {
-      throw new Error('Invalid response from server');
+  // Login function with 2FA handling
+  const login = async (email, password) => {
+    setIsLoading(true);
+    try {
+      const response = await apiLogin({ email, password });
+      console.log('Auth provider login response:', response);
+      
+      // Check if 2FA is required
+      if (response.requires2FA && response.tempToken) {
+        setTempToken(response.tempToken);
+        setRequires2FA(true);
+        setIsLoading(false);
+        return response;
+      }
+      
+      // Normal login flow (no 2FA)
+      handleAuthResponse(response);
+      return response;
+    } catch (error) {
+      console.error('Auth provider login error:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Verify 2FA code function
+  const verify2FA = async (code, isRecoveryCode = false) => {
+    if (!tempToken) {
+      throw new Error('No temporary token available');
     }
     
-    handleAuthResponse(response);
-    return response;
-  } catch (error) {
-    console.error('Auth provider login error:', error);
-    throw error;
-  } finally {
-    setIsLoading(false);
-  }
-};
-
-
+    setIsLoading(true);
+    try {
+      const response = await verify2FALogin(tempToken, code, isRecoveryCode);
+      
+      // Complete the login process
+      handleAuthResponse(response);
+      
+      // Clear 2FA state
+      setTempToken(null);
+      setRequires2FA(false);
+      
+      return response;
+    } catch (error) {
+      console.error('2FA verification error:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Cancel login (when user cancels 2FA)
+  const cancelLogin = () => {
+    setTempToken(null);
+    setRequires2FA(false);
+  };
   
   // Register function
   const register = async (username, email, password) => {
@@ -85,6 +127,7 @@ const login = async (email, password) => {
       setIsLoading(false);
     }
   };
+  
   // Logout function
   const logout = () => {
     if (typeof window !== 'undefined') {
@@ -93,6 +136,8 @@ const login = async (email, password) => {
     }
     setUser(null);
     setToken(null);
+    setTempToken(null);
+    setRequires2FA(false);
     
     // Redirect to home page (client-side only)
     if (typeof window !== 'undefined') {
@@ -106,8 +151,6 @@ const login = async (email, password) => {
       setUser({ ...user, ...userData });
     }
   };
-
-  
 
   const handleAuthResponse = (response) => {
     if (!response || !response.token || !response.data || !response.data.user) {
@@ -135,10 +178,15 @@ const login = async (email, password) => {
     token,
     isLoading,
     isAuthenticated: !!user,
+    tempToken,
+    requires2FA,
+    authInitialized,
     login,
+    verify2FA,
     register,
     logout,
-    updateUserData
+    updateUserData,
+    cancelLogin
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

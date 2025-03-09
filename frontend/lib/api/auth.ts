@@ -17,6 +17,7 @@ export interface User {
   walletAddress?: string;
   balance: number;
   role: 'user' | 'admin';
+  has2FA?: boolean;
 }
 
 export interface AuthResponse {
@@ -24,6 +25,8 @@ export interface AuthResponse {
   data: {
     user: User;
   };
+  requires2FA?: boolean;
+  tempToken?: string;
 }
 
 // Register a new user
@@ -36,6 +39,20 @@ export const register = async (data: RegisterData): Promise<AuthResponse> => {
 export const login = async (credentials: LoginCredentials): Promise<AuthResponse> => {
   console.log("Calling frontend login api")
   const response = await apiClient.post('/auth/login', credentials);
+  return handleApiResponse(response);
+};
+
+// Verify 2FA during login
+export const verify2FALogin = async (
+  tempToken: string, 
+  verificationCode: string,
+  isRecoveryCode: boolean = false
+): Promise<AuthResponse> => {
+  const response = await apiClient.post('/auth/verify-2fa', {
+    token: tempToken,
+    code: verificationCode,
+    isRecoveryCode
+  });
   return handleApiResponse(response);
 };
 
@@ -67,5 +84,37 @@ export const requestPasswordReset = async (email: string): Promise<{ status: str
 // Reset password with token
 export const resetPassword = async (token: string, password: string): Promise<AuthResponse> => {
   const response = await apiClient.post(`/auth/reset-password/${token}`, { password });
+  return handleApiResponse(response);
+};
+
+// 2FA functions
+
+// Get 2FA status for current user
+export const getUser2FAStatus = async (): Promise<{ data: { enabled: boolean } }> => {
+  const response = await apiClient.get('/auth/2fa/status');
+  return handleApiResponse(response);
+};
+
+// Start 2FA setup process
+export const setup2FA = async (): Promise<{ data: { qrCodeUrl: string, secretKey: string } }> => {
+  const response = await apiClient.post('/auth/2fa/setup');
+  return handleApiResponse(response);
+};
+
+// Verify and enable 2FA
+export const verify2FA = async (code: string): Promise<{ data: { recoveryCodes: string[] } }> => {
+  const response = await apiClient.post('/auth/2fa/verify', { code });
+  return handleApiResponse(response);
+};
+
+// Disable 2FA
+export const disable2FA = async (): Promise<{ status: string; message: string }> => {
+  const response = await apiClient.post('/auth/2fa/disable');
+  return handleApiResponse(response);
+};
+
+// Get recovery codes
+export const getRecoveryCodes = async (): Promise<{ data: { recoveryCodes: string[] } }> => {
+  const response = await apiClient.get('/auth/2fa/recovery-codes');
   return handleApiResponse(response);
 };

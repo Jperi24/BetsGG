@@ -1,19 +1,27 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Peer-to-peer esports betting platform backend",
+  "main": "src/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon src/server.js"
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "cross-env SEED_DATABASE=true node src/server.js"
   },
-  "keywords": [],
+  "keywords": [
+    "esports",
+    "betting",
+    "blockchain",
+    "ethereum",
+    "solana"
+  ],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "compression": "^1.8.0",
     "cors": "^2.8.5",
+    "cross-env": "^7.0.3",
     "cross-fetch": "^4.1.0",
     "crypto": "^1.0.1",
     "dotenv": "^16.4.7",
@@ -29,6 +37,9 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.10.1",
     "node-cache": "^5.1.2",
+    "nodemailer": "^6.10.0",
+    "qrcode": "^1.5.4",
+    "speakeasy": "^2.0.0",
     "web3": "^4.16.0",
     "xss-clean": "^0.1.4"
   },

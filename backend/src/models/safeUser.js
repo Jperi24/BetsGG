@@ -1,4 +1,4 @@
-// src/models/User.js (Updated)
+// src/models/User.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -54,30 +54,7 @@ const userSchema = new mongoose.Schema({
     default: Date.now
   },
   passwordResetToken: String,
-  passwordResetExpires: Date,
-  
-  // Two-factor authentication fields
-  twoFactorSecret: {
-    type: String,
-    select: false
-  },
-  twoFactorEnabled: {
-    type: Boolean,
-    default: false
-  },
-  twoFactorRecoveryCodes: {
-    type: [String],
-    select: false
-  },
-  
-  // Login attempt tracking (for security)
-  loginAttempts: {
-    type: Number,
-    default: 0
-  },
-  lockUntil: {
-    type: Date
-  }
+  passwordResetExpires: Date
 });
 
 // Hash the password before saving
@@ -102,27 +79,9 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 // Method to generate JWT
 userSchema.methods.generateJWT = function() {
   return jwt.sign(
-    { 
-      id: this._id, 
-      email: this.email, 
-      role: this.role,
-      require2FA: this.twoFactorEnabled
-    },
+    { id: this._id, email: this.email, role: this.role },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN }
-  );
-};
-
-// Generate a temporary JWT for 2FA authentication
-userSchema.methods.generateTempJWT = function() {
-  return jwt.sign(
-    { 
-      id: this._id,
-      email: this.email,
-      pending2FA: true
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: '5m' } // Short expiration for security
   );
 };
 
@@ -138,39 +97,6 @@ userSchema.methods.createPasswordResetToken = function() {
   this.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
   
   return resetToken;
-};
-
-// Method to check if account is locked
-userSchema.methods.isLocked = function() {
-  // Check for lock until time in the future
-  return !!(this.lockUntil && this.lockUntil > Date.now());
-};
-
-// Method to handle failed login attempts
-userSchema.methods.incrementLoginAttempts = async function() {
-  // Reset login attempts if lock has expired
-  if (this.lockUntil && this.lockUntil < Date.now()) {
-    this.loginAttempts = 1;
-    this.lockUntil = undefined;
-  } else {
-    // Increment login attempts
-    this.loginAttempts += 1;
-    
-    // Lock account if too many attempts (5)
-    if (this.loginAttempts >= 5 && !this.isLocked()) {
-      // Lock for 30 minutes
-      this.lockUntil = Date.now() + 30 * 60 * 1000;
-    }
-  }
-  
-  return await this.save();
-};
-
-// Reset login attempts on successful login
-userSchema.methods.resetLoginAttempts = async function() {
-  this.loginAttempts = 0;
-  this.lockUntil = undefined;
-  return await this.save();
 };
 
 const User = mongoose.model('User', userSchema);
