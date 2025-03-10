@@ -11,13 +11,17 @@ router.post('/register', validateRegister, authController.register);
 router.post('/login', validateLogin, authController.login);
 router.post('/verify-2fa', 
   [
-    body('userId')
-      .isMongoId()
-      .withMessage('Invalid user ID'),
     body('token')
       .isString()
       .notEmpty()
-      .withMessage('Token is required')
+      .withMessage('Token is required'),
+    body('code')
+      .isString()
+      .notEmpty()
+      .withMessage('Verification code is required'),
+    body('isRecoveryCode')
+      .optional()
+      .isBoolean()
   ],
   authController.verifyTwoFactor
 );
@@ -39,26 +43,13 @@ router.get('/me', authController.getMe);
 router.patch('/update-password', validatePassword, authController.updatePassword);
 router.post('/link-wallet', validateWallet, authController.linkWallet);
 
-// Two-factor authentication routes
+router.get('/2fa/status', authController.getTwoFactorStatus);
 router.post('/2fa/setup', authController.setupTwoFactor);
-router.post('/2fa/verify',
-  [
-    body('token')
-      .isString()
-      .notEmpty()
-      .withMessage('Verification code is required')
-  ],
-  authController.verifyAndEnableTwoFactor
-);
-router.post('/2fa/disable',
-  [
-    body('password')
-      .isString()
-      .notEmpty()
-      .withMessage('Current password is required')
-  ],
-  authController.disableTwoFactor
-);
+router.post('/2fa/verify', authController.verifyAndEnableTwoFactor);
+router.post('/2fa/disable', authController.disableTwoFactor);
+router.get('/2fa/recovery-codes', authController.getRecoveryCodes);
+router.post('/verify-2fa', authController.verifyTwoFactor);
+
 router.post('/2fa/recovery-codes',
   [
     body('password')
@@ -68,5 +59,8 @@ router.post('/2fa/recovery-codes',
   ],
   authController.regenerateRecoveryCodes
 );
+
+router.get('/2fa/status', authController.getTwoFactorStatus);
+router.get('/2fa/recovery-codes', authController.getRecoveryCodes);
 
 module.exports = router;

@@ -43,15 +43,14 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
 };
 
 // Verify 2FA during login
+// lib/api/auth.ts - update verify2FALogin function
 export const verify2FALogin = async (
-  tempToken: string, 
-  verificationCode: string,
-  isRecoveryCode: boolean = false
+  userId: string, 
+  code: string
 ): Promise<AuthResponse> => {
   const response = await apiClient.post('/auth/verify-2fa', {
-    token: tempToken,
-    code: verificationCode,
-    isRecoveryCode
+    token: userId,
+    code
   });
   return handleApiResponse(response);
 };

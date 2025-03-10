@@ -1,15 +1,12 @@
 // src/services/auth/two-factor.js
-const crypto = require('crypto');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
+const crypto = require('crypto');
 const User = require('../../models/User');
 const { AppError } = require('../../middleware/error');
 
 /**
  * Generate a new TOTP secret for a user
- * @param {string} userId - User ID
- * @param {string} email - User email (for identification in authenticator app)
- * @returns {Object} - Contains secret, QR code data URL, and recovery codes
  */
 const generateTotpSecret = async (userId, email) => {
   // Find user
@@ -29,19 +26,19 @@ const generateTotpSecret = async (userId, email) => {
     crypto.randomBytes(10).toString('hex').toUpperCase().match(/.{4}/g).join('-')
   );
   
-  // Hash recovery codes for storage
-  const hashedRecoveryCodes = recoveryCodes.map(code => 
-    crypto.createHash('sha256').update(code).digest('hex')
+  // Use findByIdAndUpdate to avoid version conflicts
+  await User.findByIdAndUpdate(
+    userId,
+    {
+      twoFactorSecret: secret.base32,
+      twoFactorEnabled: false,
+      twoFactorRecoveryCodes: recoveryCodes
+    },
+    { new: true }
   );
   
   // Generate QR code data URL
   const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
-  
-  // Store secret and recovery codes in user document
-  user.twoFactorSecret = secret.base32;
-  user.twoFactorEnabled = false; // Will be enabled after verification
-  user.twoFactorRecoveryCodes = hashedRecoveryCodes;
-  await user.save({ validateBeforeSave: false });
   
   return {
     secret: secret.base32,
@@ -51,14 +48,11 @@ const generateTotpSecret = async (userId, email) => {
 };
 
 /**
- * Verify a TOTP token and enable 2FA for the user
- * @param {string} userId - User ID
- * @param {string} token - TOTP token from authenticator app
- * @returns {boolean} - Success status
+ * Verify and enable 2FA
  */
 const verifyAndEnableTwoFactor = async (userId, token) => {
   // Find user
-  const user = await User.findById(userId);
+  const user = await User.findById(userId).select('+twoFactorSecret');
   if (!user) {
     throw new AppError('User not found', 404);
   }
@@ -81,21 +75,21 @@ const verifyAndEnableTwoFactor = async (userId, token) => {
   }
   
   // Enable 2FA for the user
-  user.twoFactorEnabled = true;
-  await user.save();
+  await User.findByIdAndUpdate(
+    userId,
+    { twoFactorEnabled: true },
+    { new: true }
+  );
   
   return true;
 };
 
 /**
  * Verify a TOTP token for login
- * @param {string} userId - User ID
- * @param {string} token - TOTP token from authenticator app
- * @returns {boolean} - Verification result
  */
 const verifyTwoFactorToken = async (userId, token) => {
   // Find user
-  const user = await User.findById(userId);
+  const user = await User.findById(userId).select('+twoFactorSecret +twoFactorRecoveryCodes');
   if (!user) {
     throw new AppError('User not found', 404);
   }
@@ -107,96 +101,70 @@ const verifyTwoFactorToken = async (userId, token) => {
   
   // Check if token is a recovery code
   if (token.includes('-') && token.length > 10) {
-    return await verifyRecoveryCode(user, token);
+    // Normalize the code for comparison
+    const normalizedCode = token.replace(/\s+/g, '').toUpperCase();
+    
+    // Check if the code exists in the user's recovery codes
+    const codeIndex = user.twoFactorRecoveryCodes.findIndex(
+      code => code.replace(/\s+/g, '').toUpperCase() === normalizedCode
+    );
+    
+    if (codeIndex !== -1) {
+      // Remove the used code
+      const updatedCodes = [...user.twoFactorRecoveryCodes];
+      updatedCodes.splice(codeIndex, 1);
+      
+      await User.findByIdAndUpdate(userId, {
+        twoFactorRecoveryCodes: updatedCodes
+      }, { new: true });
+      
+      return true;
+    }
+    
+    return false;
   }
   
   // Verify the TOTP token
-  const verified = speakeasy.totp.verify({
+  return speakeasy.totp.verify({
     secret: user.twoFactorSecret,
     encoding: 'base32',
     token: token,
     window: 1 // Allow 1 period before/after for clock drift
   });
-  
-  return verified;
-};
-
-/**
- * Verify a recovery code
- * @param {Object} user - User document
- * @param {string} code - Recovery code
- * @returns {boolean} - Verification result
- */
-const verifyRecoveryCode = async (user, code) => {
-  // Remove any spaces or dashes for consistent comparison
-  const normalizedCode = code.replace(/[-\s]/g, '').toUpperCase();
-  
-  // Hash the code for comparison
-  const hashedCode = crypto.createHash('sha256').update(normalizedCode).digest('hex');
-  
-  // Check if the code exists in the user's recovery codes
-  const codeIndex = user.twoFactorRecoveryCodes.indexOf(hashedCode);
-  
-  if (codeIndex === -1) {
-    return false;
-  }
-  
-  // Remove the used code
-  user.twoFactorRecoveryCodes.splice(codeIndex, 1);
-  await user.save();
-  
-  return true;
 };
 
 /**
  * Disable 2FA for a user
- * @param {string} userId - User ID
- * @param {string} password - Current password for verification
- * @returns {boolean} - Success status
  */
-const disableTwoFactor = async (userId, password) => {
+const disableTwoFactor = async (userId) => {
   // Find user
-  const user = await User.findById(userId).select('+password');
+  const user = await User.findById(userId);
   if (!user) {
     throw new AppError('User not found', 404);
   }
   
-  // Verify password
-  const isPasswordCorrect = await user.comparePassword(password);
-  if (!isPasswordCorrect) {
-    throw new AppError('Incorrect password', 401);
-  }
-  
   // Disable 2FA
-  user.twoFactorEnabled = false;
-  user.twoFactorSecret = undefined;
-  user.twoFactorRecoveryCodes = undefined;
-  await user.save();
+  await User.findByIdAndUpdate(userId, {
+    twoFactorEnabled: false,
+    twoFactorSecret: undefined,
+    twoFactorRecoveryCodes: undefined
+  }, { new: true });
   
   return true;
 };
 
 /**
  * Generate new recovery codes for a user
- * @param {string} userId - User ID
- * @param {string} password - Current password for verification
- * @returns {Array} - New recovery codes
  */
-const generateNewRecoveryCodes = async (userId, password) => {
+const generateNewRecoveryCodes = async (userId) => {
   // Find user
-  const user = await User.findById(userId).select('+password');
+  const user = await User.findById(userId);
   if (!user) {
     throw new AppError('User not found', 404);
   }
   
-  // Verify password
-  const isPasswordCorrect = await user.comparePassword(password);
-  if (!isPasswordCorrect) {
-    throw new AppError('Incorrect password', 401);
-  }
-  
   // Check if 2FA is enabled
-  if (!user.twoFactorEnabled || !user.twoFactorSecret) {
+  if (!user.twoFactorEnabled) {
     throw new AppError('Two-factor authentication is not enabled for this user', 400);
   }
   
@@ -205,14 +173,10 @@ const generateNewRecoveryCodes = async (userId, password) => {
     crypto.randomBytes(10).toString('hex').toUpperCase().match(/.{4}/g).join('-')
   );
   
-  // Hash recovery codes for storage
-  const hashedRecoveryCodes = recoveryCodes.map(code => 
-    crypto.createHash('sha256').update(code).digest('hex')
-  );
-  
-  // Save new recovery codes
-  user.twoFactorRecoveryCodes = hashedRecoveryCodes;
-  await user.save();
+  // Update user's recovery codes
+  await User.findByIdAndUpdate(userId, {
+    twoFactorRecoveryCodes: recoveryCodes
+  }, { new: true });
   
   return recoveryCodes;
 };

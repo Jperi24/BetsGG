@@ -1,13 +1,11 @@
-// src/services/email/index.js
+// src/services/email/index.js - Updated
 const nodemailer = require('nodemailer');
 const { AppError } = require('../../middleware/error');
 
 /**
- * Configure email transport based on environment
- * - Uses Ethereal (fake SMTP service) for development
- * - Uses configured SMTP service for production
+ * Configure email transport for Mailgun
  */
-const createTransport = async () => {
+const createTransport = () => {
   return nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
     port: parseInt(process.env.EMAIL_PORT),
@@ -15,18 +13,30 @@ const createTransport = async () => {
     auth: {
       user: process.env.EMAIL_USERNAME,
       pass: process.env.EMAIL_PASSWORD
-    }
+    },
+    // Added for better debugging
+    logger: process.env.NODE_ENV === 'development',
+    debug: process.env.NODE_ENV === 'development'
   });
 };
 
 /**
- * Send email
+ * Send email with better error handling
  * @param {Object} options - Email options
  * @returns {Object} - Email send info
  */
 const sendEmail = async (options) => {
   try {
-    const transporter = await createTransport();
+    const transporter = createTransport();
+    
+    // Verify connection configuration
+    try {
+      await transporter.verify();
+      console.log('SMTP connection verified successfully');
+    } catch (verifyError) {
+      console.error('SMTP Connection Verification Error:', verifyError);
+      throw new AppError('Email service connection error: ' + verifyError.message, 500);
+    }
     
     const mailOptions = {
       from: `${process.env.EMAIL_FROM_NAME} <${process.env.EMAIL_FROM_ADDRESS}>`,
@@ -36,25 +46,39 @@ const sendEmail = async (options) => {
       html: options.html
     };
     
+    console.log(`Attempting to send email to: ${options.to}`);
     const info = await transporter.sendMail(mailOptions);
+    console.log('Email sent successfully:', info.messageId);
     
+    // For development, log preview URL (if available)
+    if (process.env.NODE_ENV === 'development' && info.preview) {
+      console.log('Email Preview URL:', info.preview);
+    }
     
     return info;
   } catch (error) {
     console.error('Email sending error:', error);
-    throw new AppError('Failed to send email', 500);
+    
+    // More specific error messages based on common issues
+    if (error.code === 'EENVELOPE' && error.responseCode === 421) {
+      throw new AppError('Mailgun account not activated. Please check your Mailgun account and activate it.', 500);
+    } else if (error.code === 'EAUTH') {
+      throw new AppError('Email authentication failed. Check your SMTP credentials.', 500);
+    } else if (error.code === 'ESOCKET' || error.code === 'ECONNECTION') {
+      throw new AppError('Could not connect to the email server. Check your network and email configuration.', 500);
+    }
+    
+    throw new AppError('Failed to send email: ' + error.message, 500);
   }
 };
 
 /**
  * Send password reset email
- * @param {string} email - Recipient email
- * @param {string} resetToken - Password reset token
- * @param {string} resetUrl - Reset URL with token
- * @returns {Object} - Email send info
+ * Same implementation as before, just calls the updated sendEmail function
  */
 const sendPasswordResetEmail = async (email, resetToken, username) => {
-  const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+  const resetUrl = `${process.env.FRONTEND_URL}/auth/reset-password/${resetToken}`;
+
   
   const subject = 'Your password reset token (valid for 10 minutes)';
   
