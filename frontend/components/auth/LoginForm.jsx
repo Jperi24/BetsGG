@@ -29,11 +29,12 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
       // Log request details
       console.log('Attempting login with:', { email });
       
-      const response = await login(email, password);
-      console.log('Login response:', response);
+      await login(email, password);
       
-      // If 2FA is not required, the auth provider will handle the redirect
-      if (!response.requires2FA) {
+      // If 2FA is not required, the login function in the auth provider
+      // will handle setting the user and token states
+      if (!requires2FA) {
+        console.log('Login successful, redirecting to:', redirectPath);
         const decodedPath = decodeURIComponent(redirectPath);
         router.push(decodedPath);
       }

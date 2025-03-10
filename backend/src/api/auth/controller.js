@@ -21,6 +21,7 @@ const createSendToken = (user, statusCode, res, options = {}) => {
     status: 'success',
     token,
     requires2FA: user.twoFactorEnabled && options.temp2FA,
+    tempToken: options.temp2FA ? user.id : undefined,
     data: {
       user
     }
@@ -90,7 +91,7 @@ exports.linkWallet = async (req, res, next) => {
   }
 };
 
-// Log in user// Update the login function
+// Log in user
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -145,15 +146,11 @@ exports.login = async (req, res, next) => {
     
     // If 2FA is enabled, send temporary token
     if (user.twoFactorEnabled) {
-      return res.status(200).json({
-        status: 'success',
-        requires2FA: true,
-        token: user.id // Just use user ID as the token for simplicity
-      });
+      createSendToken(user, 200, res, { temp2FA: true });
+    } else {
+      // If 2FA is not enabled, generate JWT and send response
+      createSendToken(user, 200, res);
     }
-    
-    // If 2FA is not enabled, generate JWT and send response
-    createSendToken(user, 200, res);
   } catch (error) {
     console.error('Login Error:', error);
     next(error);
@@ -163,17 +160,17 @@ exports.login = async (req, res, next) => {
 // Verify 2FA token
 exports.verifyTwoFactor = async (req, res, next) => {
   try {
-    const { userId, token } = req.body;
+    const { token, code, isRecoveryCode } = req.body;
     
-    if (!userId || !token) {
+    if (!token || !code) {
       return res.status(400).json({
         status: 'fail',
-        message: 'User ID and verification code are required'
+        message: 'Verification token and code are required'
       });
     }
     
-    // Verify the token
-    const isValid = await twoFactorService.verifyTwoFactorToken(userId, token);
+    // Verify the token - handle both regular codes and recovery codes
+    const isValid = await twoFactorService.verifyTwoFactorToken(token, code, isRecoveryCode);
     
     if (!isValid) {
       return res.status(401).json({
@@ -183,7 +180,7 @@ exports.verifyTwoFactor = async (req, res, next) => {
     }
     
     // Get the user
-    const user = await User.findById(userId);
+    const user = await User.findById(token);
     
     // Generate full JWT and send response
     createSendToken(user, 200, res);
@@ -304,7 +301,6 @@ exports.resetPassword = async (req, res, next) => {
   }
 };
 
-// In src/api/auth/controller.js
 /**
  * Get user's 2FA status
  */
@@ -314,7 +310,7 @@ exports.getTwoFactorStatus = async (req, res, next) => {
     res.status(200).json({
       status: 'success',
       data: {
-        enabled: req.user.twoFactorEnabled
+        enabled: req.user.twoFactorEnabled || false
       }
     });
   } catch (error) {
@@ -322,68 +318,9 @@ exports.getTwoFactorStatus = async (req, res, next) => {
   }
 };
 
-// In src/api/auth/controller.js - update verifyTwoFactor function
-exports.verifyTwoFactor = async (req, res, next) => {
-  try {
-    const { token, code, isRecoveryCode } = req.body;
-    
-    if (!token || !code) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Verification token and code are required'
-      });
-    }
-    
-    // Verify the token - handle both regular codes and recovery codes
-    const isValid = await twoFactorService.verifyTwoFactorToken(token, code, isRecoveryCode);
-    
-    if (!isValid) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'Invalid verification code'
-      });
-    }
-    
-    // Get the user
-    const user = await User.findById(token);
-    
-    // Generate full JWT and send response
-    createSendToken(user, 200, res);
-  } catch (error) {
-    next(error);
-  }
-};
-
-// In src/api/auth/controller.js
 /**
- * Get user's recovery codes
+ * Setup 2FA for a user
  */
-exports.getRecoveryCodes = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    
-    // Verify that 2FA is enabled
-    if (!req.user.twoFactorEnabled) {
-      return res.status(400).json({
-        status: 'fail',
-        message: '2FA is not enabled for this account'
-      });
-    }
-    
-    // Generate new recovery codes
-    const recoveryCodes = await twoFactorService.generateNewRecoveryCodes(userId);
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        recoveryCodes
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-// Update the setupTwoFactor function
 exports.setupTwoFactor = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -406,13 +343,20 @@ exports.setupTwoFactor = async (req, res, next) => {
   }
 };
 
-// Update the verifyAndEnableTwoFactor function
+/**
+ * Verify and enable 2FA
+ */
+
 exports.verifyAndEnableTwoFactor = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { code } = req.body;
     
+    console.log(`2FA verification request received for user ${userId}`);
+    console.log(`Verification code provided: ${code}`);
+    
     if (!code) {
+      console.log('No verification code provided');
       return res.status(400).json({
         status: 'fail',
         message: 'Verification code is required'
@@ -420,58 +364,44 @@ exports.verifyAndEnableTwoFactor = async (req, res, next) => {
     }
     
     // Try to verify the token
-    await twoFactorService.verifyAndEnableTwoFactor(userId, code);
-    
-    // Get user with recovery codes to return them
-    const user = await User.findById(userId).select('+twoFactorRecoveryCodes');
-    
-    res.status(200).json({
-      status: 'success',
-      message: 'Two-factor authentication has been enabled successfully',
-      data: {
-        recoveryCodes: user.twoFactorRecoveryCodes
-      }
-    });
+    try {
+      await twoFactorService.verifyAndEnableTwoFactor(userId, code);
+      console.log(`2FA verification successful for user ${userId}`);
+      
+      // Get user with recovery codes to return them
+      const user = await User.findById(userId).select('+twoFactorRecoveryCodes');
+      
+      res.status(200).json({
+        status: 'success',
+        message: 'Two-factor authentication has been enabled successfully',
+        data: {
+          recoveryCodes: user.twoFactorRecoveryCodes
+        }
+      });
+    } catch (validationError) {
+      console.error(`2FA verification failed for user ${userId}:`, validationError);
+      
+      // Check if there are specific details we can provide to help troubleshooting
+      let errorMessage = validationError.message || 'Failed to verify code. Please try again.';
+      
+      return res.status(validationError.statusCode || 400).json({
+        status: 'fail',
+        message: errorMessage,
+        debug: process.env.NODE_ENV === 'development' ? {
+          providedCode: code,
+          error: validationError.message
+        } : undefined
+      });
+    }
   } catch (error) {
     console.error('2FA Verification Error:', error);
     next(error);
   }
 };
 
-// Update the verifyTwoFactor function (for login)
-exports.verifyTwoFactor = async (req, res, next) => {
-  try {
-    const { token, code } = req.body;
-    
-    if (!token || !code) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'User ID and verification code are required'
-      });
-    }
-    
-    // Verify the token
-    const isValid = await twoFactorService.verifyTwoFactorToken(token, code);
-    
-    if (!isValid) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'Invalid verification code'
-      });
-    }
-    
-    // Get the user
-    const user = await User.findById(token);
-    
-    // Generate JWT and send response
-    createSendToken(user, 200, res);
-  } catch (error) {
-    console.error('2FA Login Verification Error:', error);
-    next(error);
-  }
-};
-
-// Update the disableTwoFactor function
+/**
+ * Disable 2FA for a user
+ */
 exports.disableTwoFactor = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -489,23 +419,9 @@ exports.disableTwoFactor = async (req, res, next) => {
   }
 };
 
-// Add a function to get 2FA status
-exports.getTwoFactorStatus = async (req, res, next) => {
-  try {
-    // User is already available from auth middleware
-    res.status(200).json({
-      status: 'success',
-      data: {
-        enabled: req.user.twoFactorEnabled || false
-      }
-    });
-  } catch (error) {
-    console.error('2FA Status Error:', error);
-    next(error);
-  }
-};
-
-// Add a function to get recovery codes
+/**
+ * Get recovery codes
+ */
 exports.getRecoveryCodes = async (req, res, next) => {
   try {
     // Check if 2FA is enabled
@@ -527,6 +443,47 @@ exports.getRecoveryCodes = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Get Recovery Codes Error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Regenerate recovery codes
+ */
+exports.regenerateRecoveryCodes = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { password } = req.body;
+    
+    // Verify password
+    const user = await User.findById(userId).select('+password');
+    const isValid = await user.comparePassword(password);
+    
+    if (!isValid) {
+      return res.status(401).json({
+        status: 'fail',
+        message: 'Current password is incorrect'
+      });
+    }
+    
+    // Check if 2FA is enabled
+    if (!user.twoFactorEnabled) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Two-factor authentication is not enabled'
+      });
+    }
+    
+    // Generate new recovery codes
+    const recoveryCodes = await twoFactorService.generateNewRecoveryCodes(userId);
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        recoveryCodes
+      }
+    });
+  } catch (error) {
     next(error);
   }
 };

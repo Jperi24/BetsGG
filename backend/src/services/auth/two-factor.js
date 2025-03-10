@@ -9,6 +9,8 @@ const { AppError } = require('../../middleware/error');
  * Generate a new TOTP secret for a user
  */
 const generateTotpSecret = async (userId, email) => {
+  console.log(`Generating 2FA secret for user: ${userId}, email: ${email}`);
+  
   // Find user
   const user = await User.findById(userId);
   if (!user) {
@@ -20,6 +22,8 @@ const generateTotpSecret = async (userId, email) => {
     name: `ESports Betting:${email}`,
     length: 20
   });
+  
+  console.log(`Generated secret: ${secret.base32}`);
   
   // Generate recovery codes
   const recoveryCodes = Array(8).fill().map(() => 
@@ -40,6 +44,10 @@ const generateTotpSecret = async (userId, email) => {
   // Generate QR code data URL
   const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
   
+  // Verify the secret has been saved correctly
+  const updatedUser = await User.findById(userId).select('+twoFactorSecret');
+  console.log(`Stored secret in DB: ${updatedUser.twoFactorSecret}`);
+  
   return {
     secret: secret.base32,
     qrCodeUrl,
@@ -51,28 +59,89 @@ const generateTotpSecret = async (userId, email) => {
  * Verify and enable 2FA
  */
 const verifyAndEnableTwoFactor = async (userId, token) => {
+  console.log(`Verifying 2FA setup for user: ${userId}, token: ${token}`);
+  
   // Find user
   const user = await User.findById(userId).select('+twoFactorSecret');
   if (!user) {
+    console.error(`User not found: ${userId}`);
     throw new AppError('User not found', 404);
   }
   
   // If no secret is stored, 2FA setup was not initiated
   if (!user.twoFactorSecret) {
+    console.error(`No 2FA secret found for user: ${userId}`);
     throw new AppError('Two-factor authentication setup not initiated', 400);
   }
   
-  // Verify the token
-  const verified = speakeasy.totp.verify({
+  console.log(`User secret from DB: ${user.twoFactorSecret}`);
+  
+  // Clean the token
+  const cleanToken = token.replace(/\s+/g, '');
+  console.log(`Cleaned token: ${cleanToken}`);
+  
+  // Generate the current expected token for debugging
+  const expectedToken = speakeasy.totp({
+    secret: user.twoFactorSecret,
+    encoding: 'base32'
+  });
+  console.log(`Current expected token: ${expectedToken}`);
+  
+  // Try verification with various windows
+  let verified = false;
+  
+  // Try with window = 0 (exact match)
+  verified = speakeasy.totp.verify({
     secret: user.twoFactorSecret,
     encoding: 'base32',
-    token: token,
-    window: 1 // Allow 1 period before/after for clock drift
+    token: cleanToken,
+    window: 0
   });
+  console.log(`Verification with window=0: ${verified}`);
+  
+  // If not verified, try with window = 1
+  if (!verified) {
+    verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: cleanToken,
+      window: 1
+    });
+    console.log(`Verification with window=1: ${verified}`);
+  }
+  
+  // If still not verified, try with window = 2
+  if (!verified) {
+    verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: cleanToken,
+      window: 2
+    });
+    console.log(`Verification with window=2: ${verified}`);
+  }
+  
+  // Try with specific time parameter
+  if (!verified) {
+    const currentTime = Math.floor(Date.now() / 1000);
+    console.log(`Current time in seconds: ${currentTime}`);
+    
+    verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: cleanToken,
+      time: currentTime,
+      window: 2
+    });
+    console.log(`Verification with explicit time and window=2: ${verified}`);
+  }
   
   if (!verified) {
-    throw new AppError('Invalid verification code', 400);
+    console.error(`Verification failed for user: ${userId}, token: ${cleanToken}`);
+    throw new AppError('Invalid verification code. Please try again with a new code from your authenticator app.', 400);
   }
+  
+  console.log(`Verification successful for user: ${userId}`);
   
   // Enable 2FA for the user
   await User.findByIdAndUpdate(
@@ -81,33 +150,51 @@ const verifyAndEnableTwoFactor = async (userId, token) => {
     { new: true }
   );
   
+  console.log(`2FA enabled for user: ${userId}`);
   return true;
 };
 
 /**
  * Verify a TOTP token for login
  */
-const verifyTwoFactorToken = async (userId, token) => {
+const verifyTwoFactorToken = async (userId, token, isRecoveryCode = false) => {
+  console.log(`Verifying 2FA login for user: ${userId}, token: ${token}, isRecoveryCode: ${isRecoveryCode}`);
+  
   // Find user
   const user = await User.findById(userId).select('+twoFactorSecret +twoFactorRecoveryCodes');
   if (!user) {
+    console.error(`User not found: ${userId}`);
     throw new AppError('User not found', 404);
   }
   
   // Check if 2FA is enabled
   if (!user.twoFactorEnabled || !user.twoFactorSecret) {
+    console.error(`2FA not enabled for user: ${userId}`);
     throw new AppError('Two-factor authentication is not enabled for this user', 400);
   }
   
-  // Check if token is a recovery code
-  if (token.includes('-') && token.length > 10) {
+  console.log(`User has 2FA enabled, secret: ${user.twoFactorSecret}`);
+  
+  // Check if we're using a recovery code
+  if (isRecoveryCode || (token.includes('-') && token.length > 10)) {
+    console.log(`Attempting recovery code verification`);
     // Normalize the code for comparison
-    const normalizedCode = token.replace(/\s+/g, '').toUpperCase();
+    const normalizedCode = token.replace(/\s+/g, '').replace(/-/g, '').toUpperCase();
+    console.log(`Normalized recovery code: ${normalizedCode}`);
     
-    // Check if the code exists in the user's recovery codes
+    // Log all recovery codes for debugging
+    console.log('Available recovery codes:');
+    user.twoFactorRecoveryCodes.forEach((code, index) => {
+      const normalizedSavedCode = code.replace(/\s+/g, '').replace(/-/g, '').toUpperCase();
+      console.log(`[${index}] ${code} (normalized: ${normalizedSavedCode})`);
+    });
+    
+    // Find the code in the user's recovery codes (also normalize them)
     const codeIndex = user.twoFactorRecoveryCodes.findIndex(
-      code => code.replace(/\s+/g, '').toUpperCase() === normalizedCode
+      code => code.replace(/\s+/g, '').replace(/-/g, '').toUpperCase() === normalizedCode
     );
+    
+    console.log(`Recovery code index found: ${codeIndex}`);
     
     if (codeIndex !== -1) {
       // Remove the used code
@@ -118,28 +205,94 @@ const verifyTwoFactorToken = async (userId, token) => {
         twoFactorRecoveryCodes: updatedCodes
       }, { new: true });
       
+      console.log(`Recovery code used and removed for user: ${userId}`);
       return true;
     }
     
+    console.log(`Invalid recovery code for user: ${userId}`);
     return false;
   }
   
-  // Verify the TOTP token
-  return speakeasy.totp.verify({
+  console.log(`Attempting TOTP code verification`);
+  // Clean the token
+  const cleanToken = token.replace(/\s+/g, '');
+  console.log(`Cleaned TOTP token: ${cleanToken}`);
+  
+  // Generate the current expected token for debugging
+  const expectedToken = speakeasy.totp({
+    secret: user.twoFactorSecret,
+    encoding: 'base32'
+  });
+  console.log(`Current expected token: ${expectedToken}`);
+  
+  // Try verification with various windows
+  let verified = false;
+  
+  // Try with window = 0 (exact match)
+  verified = speakeasy.totp.verify({
     secret: user.twoFactorSecret,
     encoding: 'base32',
-    token: token,
-    window: 1 // Allow 1 period before/after for clock drift
+    token: cleanToken,
+    window: 0
   });
+  console.log(`Verification with window=0: ${verified}`);
+  
+  // If not verified, try with window = 1
+  if (!verified) {
+    verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: cleanToken,
+      window: 1
+    });
+    console.log(`Verification with window=1: ${verified}`);
+  }
+  
+  // If still not verified, try with window = 2
+  if (!verified) {
+    verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: cleanToken,
+      window: 2
+    });
+    console.log(`Verification with window=2: ${verified}`);
+  }
+  
+  // Try with explicit time parameter as well
+  if (!verified) {
+    const currentTime = Math.floor(Date.now() / 1000);
+    console.log(`Current time in seconds: ${currentTime}`);
+    
+    verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: cleanToken,
+      time: currentTime,
+      window: 2
+    });
+    console.log(`Verification with explicit time and window=2: ${verified}`);
+  }
+  
+  if (verified) {
+    console.log(`TOTP verification successful for user: ${userId}`);
+  } else {
+    console.log(`TOTP verification failed for user: ${userId}`);
+  }
+  
+  return verified;
 };
 
 /**
  * Disable 2FA for a user
  */
 const disableTwoFactor = async (userId) => {
+  console.log(`Disabling 2FA for user: ${userId}`);
+  
   // Find user
   const user = await User.findById(userId);
   if (!user) {
+    console.error(`User not found: ${userId}`);
     throw new AppError('User not found', 404);
   }
   
@@ -150,6 +303,7 @@ const disableTwoFactor = async (userId) => {
     twoFactorRecoveryCodes: undefined
   }, { new: true });
   
+  console.log(`2FA disabled for user: ${userId}`);
   return true;
 };
 
@@ -157,14 +311,18 @@ const disableTwoFactor = async (userId) => {
  * Generate new recovery codes for a user
  */
 const generateNewRecoveryCodes = async (userId) => {
+  console.log(`Generating new recovery codes for user: ${userId}`);
+  
   // Find user
   const user = await User.findById(userId);
   if (!user) {
+    console.error(`User not found: ${userId}`);
     throw new AppError('User not found', 404);
   }
   
   // Check if 2FA is enabled
   if (!user.twoFactorEnabled) {
+    console.error(`2FA not enabled for user: ${userId}`);
     throw new AppError('Two-factor authentication is not enabled for this user', 400);
   }
   
@@ -173,11 +331,14 @@ const generateNewRecoveryCodes = async (userId) => {
     crypto.randomBytes(10).toString('hex').toUpperCase().match(/.{4}/g).join('-')
   );
   
+  console.log(`Generated ${recoveryCodes.length} new recovery codes`);
+  
   // Update user's recovery codes
   await User.findByIdAndUpdate(userId, {
     twoFactorRecoveryCodes: recoveryCodes
   }, { new: true });
   
+  console.log(`Recovery codes saved for user: ${userId}`);
   return recoveryCodes;
 };
 

@@ -49,7 +49,7 @@ export const config = {
     '/bet/:path*',
     '/bets/:path*',
     '/wallet/:path*',
-    '/login',
-    '/register',
+    // '/login',
+    // '/register',
   ],
 };

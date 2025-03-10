@@ -11,6 +11,7 @@ export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, isLoading, authInitialized } = useAuth();
+
   
   // Get the redirect path from URL query params if it exists
   // Store the original 'from' parameter on first render to prevent it from being overwritten

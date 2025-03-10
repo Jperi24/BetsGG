@@ -17,7 +17,7 @@ export interface User {
   walletAddress?: string;
   balance: number;
   role: 'user' | 'admin';
-  has2FA?: boolean;
+  twoFactorEnabled?: boolean;
 }
 
 export interface AuthResponse {
@@ -37,20 +37,20 @@ export const register = async (data: RegisterData): Promise<AuthResponse> => {
 
 // Login user
 export const login = async (credentials: LoginCredentials): Promise<AuthResponse> => {
-  console.log("Calling frontend login api")
   const response = await apiClient.post('/auth/login', credentials);
   return handleApiResponse(response);
 };
 
 // Verify 2FA during login
-// lib/api/auth.ts - update verify2FALogin function
 export const verify2FALogin = async (
-  userId: string, 
-  code: string
+  token: string, 
+  code: string,
+  isRecoveryCode: boolean = false
 ): Promise<AuthResponse> => {
   const response = await apiClient.post('/auth/verify-2fa', {
-    token: userId,
-    code
+    token,
+    code,
+    isRecoveryCode
   });
   return handleApiResponse(response);
 };
@@ -58,7 +58,6 @@ export const verify2FALogin = async (
 // Get current user profile
 export const getCurrentUser = async (): Promise<{ data: { user: User } }> => {
   const response = await apiClient.get('/auth/me');
-  console.log("CURRENT USER RESPONSE",response)
   return handleApiResponse(response);
 };
 

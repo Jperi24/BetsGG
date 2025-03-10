@@ -43,13 +43,12 @@ router.get('/me', authController.getMe);
 router.patch('/update-password', validatePassword, authController.updatePassword);
 router.post('/link-wallet', validateWallet, authController.linkWallet);
 
+// 2FA routes
 router.get('/2fa/status', authController.getTwoFactorStatus);
 router.post('/2fa/setup', authController.setupTwoFactor);
 router.post('/2fa/verify', authController.verifyAndEnableTwoFactor);
 router.post('/2fa/disable', authController.disableTwoFactor);
 router.get('/2fa/recovery-codes', authController.getRecoveryCodes);
-router.post('/verify-2fa', authController.verifyTwoFactor);
-
 router.post('/2fa/recovery-codes',
   [
     body('password')
@@ -59,8 +58,5 @@ router.post('/2fa/recovery-codes',
   ],
   authController.regenerateRecoveryCodes
 );
-
-router.get('/2fa/status', authController.getTwoFactorStatus);
-router.get('/2fa/recovery-codes', authController.getRecoveryCodes);
 
 module.exports = router;

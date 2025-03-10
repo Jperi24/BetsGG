@@ -66,8 +66,8 @@ export function AuthProvider({ children }) {
       console.log('Auth provider login response:', response);
       
       // Check if 2FA is required
-      if (response.requires2FA && response.tempToken) {
-        setTempToken(response.tempToken);
+      if (response.requires2FA && response.token) {
+        setTempToken(response.token);
         setRequires2FA(true);
         setIsLoading(false);
         return response;
