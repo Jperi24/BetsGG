@@ -59,30 +59,29 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Login function with 2FA handling
-  const login = async (email, password) => {
-    setIsLoading(true);
-    try {
-      const response = await apiLogin({ email, password });
-      console.log('Auth provider login response:', response);
-      
-      // Check if 2FA is required
-      if (response.requires2FA && response.token) {
-        setTempToken(response.token);
-        setRequires2FA(true);
-        setIsLoading(false);
-        return response;
-      }
-      
-      // Normal login flow (no 2FA)
-      handleAuthResponse(response);
-      return response;
-    } catch (error) {
-      console.error('Auth provider login error:', error);
-      throw error;
-    } finally {
+// In auth-providers.jsx
+const login = async (email, password) => {
+  setIsLoading(true);
+  try {
+    const response = await apiLogin({ email, password });
+    
+    // Check if 2FA is required
+    if (response.requires2FA && response.tempToken) {
+      setTempToken(response.tempToken);
+      setRequires2FA(true);
       setIsLoading(false);
+      return response; // Make sure to return the response
     }
-  };
+    
+    handleAuthResponse(response);
+    return response; // Make sure to return the response
+  } catch (error) {
+    console.error('Auth provider login error:', error);
+    throw error;
+  } finally {
+    setIsLoading(false);
+  }
+};
   
   // Verify 2FA code function
   const verify2FA = async (code, isRecoveryCode = false) => {

@@ -19,34 +19,33 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
   console.log('LoginForm mounted with redirectPath:', redirectPath);
   
   // Handle normal login (first step)
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  // In handleLogin function of LoginForm.jsx
+const handleLogin = async (e) => {
+  e.preventDefault();
+  
+  try {
+    setIsLoading(true);
+    setError(null);
     
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      // Log request details
-      console.log('Attempting login with:', { email });
-      
-      await login(email, password);
-      
-      // If 2FA is not required, the login function in the auth provider
-      // will handle setting the user and token states
-      if (!requires2FA) {
-        console.log('Login successful, redirecting to:', redirectPath);
-        const decodedPath = decodeURIComponent(redirectPath);
-        router.push(decodedPath);
-      }
-      // If 2FA is required, the UI will change to show the 2FA verification form
-      
-    } catch (err) {
-      console.error('Login error:', err);
-      setError(err.message || 'Failed to log in. Please check your credentials.');
-    } finally {
-      setIsLoading(false);
+    console.log('Attempting login with:', { email });
+    
+    const response = await login(email, password);
+    
+    // Only redirect if 2FA is not required
+    if (!response.requires2FA) {
+      console.log('Login successful, redirecting to:', redirectPath);
+      const decodedPath = decodeURIComponent(redirectPath);
+      router.push(decodedPath);
     }
-  };
+    // If 2FA is required, the UI will change to show the 2FA verification form
+    
+  } catch (err) {
+    console.error('Login error:', err);
+    setError(err.message || 'Failed to log in. Please check your credentials.');
+  } finally {
+    setIsLoading(false);
+  }
+};
   
   // Handle 2FA verification
   const handle2FAVerificationSuccess = (token, user) => {

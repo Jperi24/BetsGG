@@ -2,6 +2,7 @@
 const { app, connectDB } = require('./app');
 const seedDatabase = require('./utils/seed-data');
 const tournamentService = require('./services/tournament');
+const cleanupExpiredTournaments = require('./services/tournament/cleanup')
 const betUpdateService = require('./services/betting/update-service');
 
 // Flag to determine if we should seed the database
@@ -19,6 +20,8 @@ async function startServer() {
       await seedDatabase();
       console.log('Database seeded successfully!');
     }
+
+    await cleanupExpiredTournaments.cleanupExpiredTournaments();
     
     // Initialize tournament cache
     await tournamentService.initializeCache();

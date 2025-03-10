@@ -17,47 +17,63 @@ const generateTotpSecret = async (userId, email) => {
     throw new AppError('User not found', 404);
   }
   
-  // Generate a new secret
+  // Generate a new secret with explicit parameters
   const secret = speakeasy.generateSecret({
     name: `ESports Betting:${email}`,
-    length: 20
+    length: 20,
+    issuer: 'ESports Betting',
+    encoding: 'base32',
+    digits: 6 // Explicitly set 6 digits
   });
   
   console.log(`Generated secret: ${secret.base32}`);
+  console.log(`Generated otpauth URL: ${secret.otpauth_url}`);
   
   // Generate recovery codes
   const recoveryCodes = Array(8).fill().map(() => 
     crypto.randomBytes(10).toString('hex').toUpperCase().match(/.{4}/g).join('-')
   );
   
-  // Use findByIdAndUpdate to avoid version conflicts
-  await User.findByIdAndUpdate(
-    userId,
-    {
-      twoFactorSecret: secret.base32,
-      twoFactorEnabled: false,
-      twoFactorRecoveryCodes: recoveryCodes
-    },
-    { new: true }
-  );
-  
-  // Generate QR code data URL
-  const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
-  
-  // Verify the secret has been saved correctly
-  const updatedUser = await User.findById(userId).select('+twoFactorSecret');
-  console.log(`Stored secret in DB: ${updatedUser.twoFactorSecret}`);
-  
-  return {
-    secret: secret.base32,
-    qrCodeUrl,
-    recoveryCodes
-  };
+  try {
+    // Use findByIdAndUpdate to avoid version conflicts
+    await User.findByIdAndUpdate(
+      userId,
+      {
+        twoFactorSecret: secret.base32,
+        twoFactorEnabled: false,
+        twoFactorRecoveryCodes: recoveryCodes
+      },
+      { new: true }
+    );
+    
+    // Verify the secret has been saved correctly
+    const updatedUser = await User.findById(userId).select('+twoFactorSecret');
+    console.log(`Stored secret in DB: ${updatedUser.twoFactorSecret}`);
+    
+    if (updatedUser.twoFactorSecret !== secret.base32) {
+      console.error('Secret mismatch between generated and stored values!');
+      throw new AppError('Failed to save 2FA secret correctly', 500);
+    }
+    
+    // Generate QR code data URL
+    const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
+    
+    return {
+      secret: secret.base32,
+      qrCodeUrl,
+      recoveryCodes
+    };
+  } catch (error) {
+    console.error('Error saving 2FA secret:', error);
+    throw new AppError('Failed to save 2FA settings', 500);
+  }
 };
 
 /**
  * Verify and enable 2FA
  */
+// Update this function in backend/src/services/auth/two-factor.js
+
 const verifyAndEnableTwoFactor = async (userId, token) => {
   console.log(`Verifying 2FA setup for user: ${userId}, token: ${token}`);
   
@@ -76,8 +92,8 @@ const verifyAndEnableTwoFactor = async (userId, token) => {
   
   console.log(`User secret from DB: ${user.twoFactorSecret}`);
   
-  // Clean the token
-  const cleanToken = token.replace(/\s+/g, '');
+  // Clean the token - remove any spaces or non-digit characters
+  const cleanToken = token.replace(/\D/g, '');
   console.log(`Cleaned token: ${cleanToken}`);
   
   // Generate the current expected token for debugging
@@ -87,53 +103,43 @@ const verifyAndEnableTwoFactor = async (userId, token) => {
   });
   console.log(`Current expected token: ${expectedToken}`);
   
-  // Try verification with various windows
-  let verified = false;
-  
-  // Try with window = 0 (exact match)
-  verified = speakeasy.totp.verify({
+  // Try verification with a larger window to account for time drift
+  // Window size of 4 allows for time skew of about +/- 2 minutes
+  let verified = speakeasy.totp.verify({
     secret: user.twoFactorSecret,
     encoding: 'base32',
     token: cleanToken,
-    window: 0
+    window: 4
   });
-  console.log(`Verification with window=0: ${verified}`);
+  console.log(`Verification with window=4: ${verified}`);
   
-  // If not verified, try with window = 1
+  // If not verified yet, try with different encoding options
   if (!verified) {
+    // Try with ASCII encoding
     verified = speakeasy.totp.verify({
       secret: user.twoFactorSecret,
-      encoding: 'base32',
+      encoding: 'base32', 
       token: cleanToken,
-      window: 1
+      window: 4
     });
-    console.log(`Verification with window=1: ${verified}`);
+    console.log(`Verification with ASCII encoding: ${verified}`);
   }
   
-  // If still not verified, try with window = 2
-  if (!verified) {
-    verified = speakeasy.totp.verify({
-      secret: user.twoFactorSecret,
-      encoding: 'base32',
-      token: cleanToken,
-      window: 2
-    });
-    console.log(`Verification with window=2: ${verified}`);
-  }
-  
-  // Try with specific time parameter
+  // If still not verified, try with a more explicit approach
   if (!verified) {
     const currentTime = Math.floor(Date.now() / 1000);
     console.log(`Current time in seconds: ${currentTime}`);
     
+    // Try with an even larger window and explicit time
     verified = speakeasy.totp.verify({
       secret: user.twoFactorSecret,
       encoding: 'base32',
       token: cleanToken,
       time: currentTime,
-      window: 2
+      window: 6, // Increase to +/- 3 minutes
+      digits: 6 // Explicitly set digits to 6
     });
-    console.log(`Verification with explicit time and window=2: ${verified}`);
+    console.log(`Verification with explicit time and larger window: ${verified}`);
   }
   
   if (!verified) {
@@ -143,15 +149,20 @@ const verifyAndEnableTwoFactor = async (userId, token) => {
   
   console.log(`Verification successful for user: ${userId}`);
   
-  // Enable 2FA for the user
-  await User.findByIdAndUpdate(
-    userId,
-    { twoFactorEnabled: true },
-    { new: true }
-  );
+  try {
+    // Enable 2FA for the user with updated approach
+    await User.findByIdAndUpdate(
+      userId,
+      { twoFactorEnabled: true },
+      { new: true }
+    );
   
-  console.log(`2FA enabled for user: ${userId}`);
-  return true;
+    console.log(`2FA enabled for user: ${userId}`);
+    return true;
+  } catch (dbError) {
+    console.error(`Database error when enabling 2FA: ${dbError.message}`);
+    throw new AppError('Failed to enable 2FA due to a database error', 500);
+  }
 };
 
 /**
