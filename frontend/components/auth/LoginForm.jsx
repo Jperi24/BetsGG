@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/providers/auth-providers';
 import { useRouter } from 'next/navigation';
@@ -9,46 +9,72 @@ import TwoFactorVerification from './TwoFactorVerification';
 
 const LoginForm = ({ redirectPath = '/dashboard' }) => {
   const router = useRouter();
-  const { login, verify2FA, requires2FA, tempToken, cancelLogin } = useAuth();
+  const { login, verify2FA, requires2FA, tempToken, cancelLogin, isAuthenticated, token } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [showingTwoFactor, setShowingTwoFactor] = useState(false);
   
-  console.log('LoginForm mounted with redirectPath:', redirectPath);
+  // Log component rendering
+  console.log('LoginForm rendered with state:', { 
+    requires2FA, 
+    hasToken: !!token, 
+    isAuthenticated, 
+    showingTwoFactor, 
+    hasTempToken: !!tempToken 
+  });
+  
+  // Check if we have a pending 2FA verification on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Restore email from session storage if available
+      const pendingEmail = sessionStorage.getItem('pendingAuthEmail');
+      if (pendingEmail) {
+        console.log('Restoring pending email:', pendingEmail);
+        setEmail(pendingEmail);
+      }
+      
+      // Check for requires2FA flag
+      if (requires2FA && tempToken) {
+        console.log('2FA verification is required, showing verification form');
+        setShowingTwoFactor(true);
+      }
+    }
+  }, [requires2FA, tempToken]);
   
   // Handle normal login (first step)
-  // In handleLogin function of LoginForm.jsx
-const handleLogin = async (e) => {
-  e.preventDefault();
-  
-  try {
-    setIsLoading(true);
-    setError(null);
+  const handleLogin = async (e) => {
+    e.preventDefault();
     
-    console.log('Attempting login with:', { email });
-    
-    const response = await login(email, password);
-    
-    // Only redirect if 2FA is not required
-    if (!response.requires2FA) {
-      console.log('Login successful, redirecting to:', redirectPath);
-      const decodedPath = decodeURIComponent(redirectPath);
-      router.push(decodedPath);
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      console.log('Attempting login with:', { email });
+      
+      const response = await login(email, password);
+      
+      // Only redirect if 2FA is not required
+      if (!response.requires2FA) {
+        console.log('Login successful, redirecting to:', redirectPath);
+        // Use router.replace instead of push to prevent history issues
+        router.replace(redirectPath);
+      }
+      
+    } catch (err) {
+      console.error('Login error:', err);
+      setError(err.message || 'Failed to log in. Please check your credentials.');
+    } finally {
+      setIsLoading(false);
     }
-    // If 2FA is required, the UI will change to show the 2FA verification form
-    
-  } catch (err) {
-    console.error('Login error:', err);
-    setError(err.message || 'Failed to log in. Please check your credentials.');
-  } finally {
-    setIsLoading(false);
-  }
-};
+  
+  };
   
   // Handle 2FA verification
   const handle2FAVerificationSuccess = (token, user) => {
+    console.log('2FA verification successful, redirecting to:', redirectPath);
     // The auth provider has already stored the token and user data
     const decodedPath = decodeURIComponent(redirectPath);
     router.push(decodedPath);
@@ -56,15 +82,18 @@ const handleLogin = async (e) => {
   
   // Handle canceling 2FA verification
   const handleCancel2FA = () => {
+    console.log('2FA verification canceled');
     cancelLogin();
+    setShowingTwoFactor(false);
   };
   
   // Show 2FA verification form if required
-  if (requires2FA && tempToken) {
+  if (showingTwoFactor || (requires2FA && tempToken)) {
+    console.log('Rendering 2FA verification form');
     return (
       <div className="w-full max-w-md mx-auto">
         <TwoFactorVerification
-          temporaryToken={tempToken}
+          temporaryToken={tempToken || sessionStorage.getItem('tempToken')}
           onVerificationSuccess={handle2FAVerificationSuccess}
           onCancel={handleCancel2FA}
         />
@@ -73,6 +102,7 @@ const handleLogin = async (e) => {
   }
   
   // Show normal login form
+  console.log('Rendering normal login form');
   return (
     <div className="w-full max-w-md mx-auto">
       {error && (

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 
-// Define protected routes that require authentication
 const protectedRoutes = [
   '/dashboard',
   '/bet/',
@@ -8,7 +7,6 @@ const protectedRoutes = [
   '/wallet',
 ];
 
-// Define auth routes that should redirect to dashboard if already logged in
 const authRoutes = [
   '/login',
   '/register',
@@ -17,9 +15,11 @@ const authRoutes = [
 export function middleware(request) {
   const { pathname } = request.nextUrl;
   
-  // Check if token exists in cookies - using request.cookies instead of the cookies() API
+  // More reliable way to check for token
   const token = request.cookies.get('token')?.value;
   const isAuthenticated = !!token;
+  
+  console.log(`Middleware checking path: ${pathname}, isAuthenticated: ${isAuthenticated}`);
   
   // Handle protected routes
   if (protectedRoutes.some(route => pathname.startsWith(route))) {
@@ -42,14 +42,14 @@ export function middleware(request) {
   return NextResponse.next();
 }
 
-// Configure which routes should trigger this middleware
+// Update your config to match routes
 export const config = {
   matcher: [
     '/dashboard/:path*',
     '/bet/:path*',
     '/bets/:path*',
     '/wallet/:path*',
-    // '/login',
-    // '/register',
+    '/login',
+    '/register',
   ],
 };

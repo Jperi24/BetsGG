@@ -16,6 +16,15 @@ const TwoFactorVerification = ({ temporaryToken, onVerificationSuccess, onCancel
     if (inputRef.current) {
       inputRef.current.focus();
     }
+    
+    // Check if we have an error stored in session storage
+    if (typeof window !== 'undefined') {
+      const storedError = sessionStorage.getItem('2fa_error');
+      if (storedError) {
+        setError(storedError);
+        sessionStorage.removeItem('2fa_error');
+      }
+    }
   }, [isUsingRecoveryCode]);
   
   // Format verification code input
@@ -50,6 +59,18 @@ const TwoFactorVerification = ({ temporaryToken, onVerificationSuccess, onCancel
       setIsLoading(true);
       setError(null);
       
+      // Ensure we have a token
+      if (!temporaryToken) {
+        if (typeof window !== 'undefined') {
+          const storedToken = sessionStorage.getItem('tempToken');
+          if (!storedToken) {
+            throw new Error('Verification token not found. Please try logging in again.');
+          }
+          // Use the stored token
+          temporaryToken = storedToken;
+        }
+      }
+      
       const response = await verify2FALogin(temporaryToken, verificationCode, isUsingRecoveryCode);
       
       // Call the success callback with the token and user info
@@ -59,6 +80,11 @@ const TwoFactorVerification = ({ temporaryToken, onVerificationSuccess, onCancel
       
     } catch (err) {
       setError(err.message || 'Failed to verify code. Please try again.');
+      
+      // Store the error in session storage in case we navigate away
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('2fa_error', err.message || 'Failed to verify code. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
