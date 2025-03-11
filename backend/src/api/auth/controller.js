@@ -26,6 +26,8 @@ const createSendToken = (user, statusCode, res, options = {}) => {
       user
     }
   });
+
+
 };
 
 // Register a new user

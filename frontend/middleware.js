@@ -1,3 +1,4 @@
+// middleware.js
 import { NextResponse } from 'next/server';
 
 const protectedRoutes = [
@@ -15,18 +16,16 @@ const authRoutes = [
 export function middleware(request) {
   const { pathname } = request.nextUrl;
   
-  // More reliable way to check for token
+  // More reliable token check
   const token = request.cookies.get('token')?.value;
-  const isAuthenticated = !!token;
-  
-  console.log(`Middleware checking path: ${pathname}, isAuthenticated: ${isAuthenticated}`);
+  const isAuthenticated = !!token && token.length > 20; // Basic validation
   
   // Handle protected routes
   if (protectedRoutes.some(route => pathname.startsWith(route))) {
     if (!isAuthenticated) {
-      // Redirect to login if not authenticated
+      // Redirect to login with return URL
       const url = new URL('/login', request.url);
-      url.searchParams.set('from', pathname);
+      url.searchParams.set('from', encodeURIComponent(pathname));
       return NextResponse.redirect(url);
     }
   }
@@ -42,7 +41,6 @@ export function middleware(request) {
   return NextResponse.next();
 }
 
-// Update your config to match routes
 export const config = {
   matcher: [
     '/dashboard/:path*',

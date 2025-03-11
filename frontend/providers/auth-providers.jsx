@@ -28,27 +28,48 @@ export function AuthProvider({ children }) {
   const [requires2FA, setRequires2FA] = useState(false);
   const [authInitialized, setAuthInitialized] = useState(false);
 
-  // In auth-providers.jsx - Update the login function
+  function pauseForEnter(message = 'Press Enter to continue...') {
+    return new Promise(resolve => {
+      window.prompt(message, '');
+      resolve();
+    });
+  }
+
+// In login function, make sure cookies are set properly
 const login = async (email, password) => {
   setIsLoading(true);
   try {
+    console.log("Attempting login...");
     const response = await apiLogin({ email, password });
+    console.log("Login response received:", { 
+      hasToken: !!response.token, 
+      requires2FA: !!response.requires2FA,
+      hasTempToken: !!response.tempToken
+    });
+
+    console.log("Raw response",response)
+
+    
     
     // Check if 2FA is required
-    if (response.requires2FA && response.tempToken) {
-      // Store 2FA state in sessionStorage to persist across redirects/refreshes
+    if (response.requires2FA && response.token) {
+      console.log("2FA required, storing temporary token");
+      // Store 2FA state in sessionStorage to persist across redirects
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('tempToken', response.tempToken);
         sessionStorage.setItem('requires2FA', 'true');
         sessionStorage.setItem('pendingAuthEmail', email);
       }
       
+      // Update state to show 2FA verification screen
       setTempToken(response.tempToken);
       setRequires2FA(true);
       setIsLoading(false);
       return response;
     }
     
+    // For normal login (no 2FA)
+    console.log("Normal login flow (no 2FA required)");
     handleAuthResponse(response);
     return response;
   } catch (error) {
@@ -59,32 +80,77 @@ const login = async (email, password) => {
   }
 };
 
-// Add this to the useEffect that initializes auth state
+// Improve the handleAuthResponse function
+const handleAuthResponse = (response) => {
+  if (!response || !response.token || !response.data || !response.data.user) {
+    throw new Error('Invalid authentication response');
+  }
+  
+  const { token, data } = response;
+
+  console.log("response = ",response)
+  
+  // Set state first
+  setToken(token);
+  setUser(data.user);
+  
+  // Then store in localStorage and cookies
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('token', token);
+    
+    // Set cookie with proper attributes
+    // Set longer expiry and ensure proper path
+    document.cookie = `token=${token}; path=/; max-age=604800; SameSite=Lax`;
+  }
+};// In auth-providers.jsx - fixed initialization useEffect
 useEffect(() => {
   const initializeAuth = async () => {
     console.log('Initializing auth state...');
     setIsLoading(true);
     
     try {
-      // Check for token in localStorage (client-side only)
+      // Check for token in localStorage and cookies (client-side only)
       if (typeof window !== 'undefined') {
-        const storedToken = localStorage.getItem('token');
-        console.log('Stored token found:', !!storedToken);
-        
-        // Check for pending 2FA verification
+        // First check for pending 2FA verification - this should take priority
         const storedTempToken = sessionStorage.getItem('tempToken');
         const storedRequires2FA = sessionStorage.getItem('requires2FA');
         
+        console.log('Session storage check:', {
+          hasTempToken: !!storedTempToken,
+          requires2FA: storedRequires2FA === 'true',
+          email: sessionStorage.getItem('pendingAuthEmail')
+        });
+        
         if (storedTempToken && storedRequires2FA === 'true') {
-          console.log('Pending 2FA verification detected');
+          console.log('Pending 2FA verification detected - awaiting code input');
           setTempToken(storedTempToken);
           setRequires2FA(true);
+          
+          // Important: Don't proceed with normal token check when 2FA is pending
+          // because 2FA needs to be completed first
+          setIsLoading(false);
+          setAuthInitialized(true);
+          return; // Exit early to avoid normal token logic
         }
+        
+        // Try to get token from localStorage if no pending 2FA
+        const storedToken = localStorage.getItem('token');
+        console.log('Stored token found:', !!storedToken);
         
         if (storedToken) {
           // Validate token format before setting it
           if (storedToken.length > 20) { // Simple validation for JWT token
             setToken(storedToken);
+            
+            // Make sure the cookie is also set
+            const cookieExists = document.cookie.split(';').some(c => 
+              c.trim().startsWith('token='));
+              
+            if (!cookieExists) {
+              // Re-set the cookie if it's missing
+              document.cookie = `token=${storedToken}; path=/; max-age=604800; SameSite=Lax`;
+            }
+            
             try {
               // Verify token by fetching current user
               console.log('Verifying token with API...');
@@ -109,7 +175,30 @@ useEffect(() => {
             document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
           }
         } else {
-          console.log('No token found, user is not authenticated');
+          // Try to get token from cookies as a backup
+          const cookieToken = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('token='))
+            ?.split('=')[1];
+            
+          if (cookieToken && cookieToken.length > 20) {
+            // If found in cookie but not localStorage, restore it
+            localStorage.setItem('token', cookieToken);
+            setToken(cookieToken);
+            
+            try {
+              // Verify cookie token
+              const response = await getCurrentUser();
+              setUser(response.data.user);
+            } catch (error) {
+              // Invalid cookie token
+              document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
+              setToken(null);
+            }
+          } else {
+            console.log('No token found, user is not authenticated');
+            console.log("Session storage", sessionStorage);
+          }
         }
       }
     } catch (error) {
@@ -117,28 +206,34 @@ useEffect(() => {
     } finally {
       setIsLoading(false);
       setAuthInitialized(true);
-      console.log('Auth initialization completed');
+      console.log('Auth initialization completed', {
+        isAuthenticated: !!user,
+        requires2FA,
+        hasTempToken: !!tempToken
+      });
     }
   };
 
   initializeAuth();
 }, []);
 
-// Update the verify2FA function to clear session storage
+
 const verify2FA = async (code, isRecoveryCode = false) => {
-  if (!tempToken) {
-    const storedTempToken = sessionStorage.getItem('tempToken');
-    if (!storedTempToken) {
-      throw new Error('No temporary token available');
-    }
-    setTempToken(storedTempToken);
-  }
-  
+  // Get the temporary token
   const tokenToUse = tempToken || sessionStorage.getItem('tempToken');
+  if (!tokenToUse) {
+    console.error('No temporary token available for 2FA verification');
+    throw new Error('No temporary token available');
+  }
   
   setIsLoading(true);
   try {
+    console.log(`Verifying 2FA code with token: ${tokenToUse.substring(0, 10)}...`);
     const response = await verify2FALogin(tokenToUse, code, isRecoveryCode);
+    console.log('2FA verification successful, response received:', {
+      hasToken: !!response.token,
+      hasUser: !!response.data?.user
+    });
     
     // Complete the login process
     handleAuthResponse(response);
@@ -186,27 +281,7 @@ const cancelLogin = () => {
     }
   };
   
- // Update the handleAuthResponse function in auth-providers.jsx
-// Update the handleAuthResponse function
-const handleAuthResponse = (response) => {
-  if (!response || !response.token || !response.data || !response.data.user) {
-    throw new Error('Invalid authentication response');
-  }
-  
-  const { token, data } = response;
-  
-  // Store token in localStorage for client-side auth
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('token', token);
-    
-    // Set cookie with proper attributes for middleware
-    document.cookie = `token=${token}; path=/; max-age=604800; SameSite=Strict`;
-  }
-  
-  // Update state
-  setToken(token);
-  setUser(data.user);
-};
+
 
 // Also update the logout function to properly clear cookies
 const logout = () => {

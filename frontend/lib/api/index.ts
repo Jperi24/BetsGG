@@ -3,16 +3,22 @@
 import axios from 'axios';
 
 // Utility for handling API responses
+// Utility for handling API responses
 export const handleApiResponse = (response: any) => {
   // Check if response exists
   if (!response) {
     throw new Error('No response received');
   }
 
-  // For auth endpoints that return token
+  console.log("handleApiResponse processing:", response.data);
+
+  // For auth endpoints that return token and potentially 2FA flags
   if (response.data?.status === 'success' && response.data?.token) {
+    // IMPORTANT: Preserve ALL fields from the original response
     return {
       token: response.data.token,
+      requires2FA: response.data.requires2FA === true,
+      tempToken: response.data.tempToken,
       data: response.data.data
     };
   }
@@ -23,6 +29,7 @@ export const handleApiResponse = (response: any) => {
   }
 
   // If we get here, something's wrong with the response format
+  console.error("Invalid API response format:", response.data);
   throw new Error('Invalid response format');
 };
 

@@ -26,7 +26,7 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
     hasTempToken: !!tempToken 
   });
   
-  // Check if we have a pending 2FA verification on mount
+  // Check if we have a pending 2FA verification on mount or when requires2FA changes
   useEffect(() => {
     if (typeof window !== 'undefined') {
       // Restore email from session storage if available
@@ -55,12 +55,22 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
       console.log('Attempting login with:', { email });
       
       const response = await login(email, password);
+      console.log('Login response:', { 
+        requires2FA: response.requires2FA,
+        hasTempToken: !!response.tempToken
+      });
       
-      // Only redirect if 2FA is not required
-      if (!response.requires2FA) {
+      // If 2FA is required, show the verification form
+      if (response.requires2FA) {
+        console.log('2FA required, showing verification form');
+        setShowingTwoFactor(true);
+      } else {
+        // Only redirect if 2FA is not required
         console.log('Login successful, redirecting to:', redirectPath);
-        // Use router.replace instead of push to prevent history issues
-        router.replace(redirectPath);
+        // Use window.location for a full page reload
+        setTimeout(() => {
+          window.location.href = redirectPath;
+        }, 200);
       }
       
     } catch (err) {
@@ -69,7 +79,6 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
     } finally {
       setIsLoading(false);
     }
-  
   };
   
   // Handle 2FA verification
@@ -77,7 +86,10 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
     console.log('2FA verification successful, redirecting to:', redirectPath);
     // The auth provider has already stored the token and user data
     const decodedPath = decodeURIComponent(redirectPath);
-    router.push(decodedPath);
+    // Use window.location for a full page reload
+    setTimeout(() => {
+      window.location.href = decodedPath;
+    }, 200);
   };
   
   // Handle canceling 2FA verification
