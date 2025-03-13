@@ -26,7 +26,21 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
     hasTempToken: !!tempToken 
   });
   
-  // Check if we have a pending 2FA verification on mount or when requires2FA changes
+  // Check if we should redirect on auth change
+  useEffect(() => {
+    if (isAuthenticated && token && !requires2FA) {
+      console.log('User is authenticated, redirecting to:', redirectPath);
+      
+      // Add a short delay to ensure state is fully updated
+      const timer = setTimeout(() => {
+        router.push(redirectPath);
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, token, requires2FA, router, redirectPath]);
+  
+  // Check if we have a pending 2FA verification on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       // Restore email from session storage if available
@@ -55,22 +69,11 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
       console.log('Attempting login with:', { email });
       
       const response = await login(email, password);
-      console.log('Login response:', { 
-        requires2FA: response.requires2FA,
-        hasTempToken: !!response.tempToken
-      });
       
-      // If 2FA is required, show the verification form
+      // Handle 2FA requirement - set flag to show 2FA form
       if (response.requires2FA) {
         console.log('2FA required, showing verification form');
         setShowingTwoFactor(true);
-      } else {
-        // Only redirect if 2FA is not required
-        console.log('Login successful, redirecting to:', redirectPath);
-        // Use window.location for a full page reload
-        setTimeout(() => {
-          window.location.href = redirectPath;
-        }, 200);
       }
       
     } catch (err) {
@@ -81,15 +84,13 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
     }
   };
   
-  // Handle 2FA verification
+  // Handle 2FA verification success
   const handle2FAVerificationSuccess = (token, user) => {
     console.log('2FA verification successful, redirecting to:', redirectPath);
-    // The auth provider has already stored the token and user data
+    
+    // Explicit redirect instead of relying on effect
     const decodedPath = decodeURIComponent(redirectPath);
-    // Use window.location for a full page reload
-    setTimeout(() => {
-      window.location.href = decodedPath;
-    }, 200);
+    router.push(decodedPath);
   };
   
   // Handle canceling 2FA verification

@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { verify2FALogin } from '@/lib/api/auth';
+import { useAuth } from '@/providers/auth-providers';
 import { Loader, AlertCircle, KeyRound, ShieldCheck } from 'lucide-react';
 
 const TwoFactorVerification = ({ temporaryToken, onVerificationSuccess, onCancel }) => {
+  const { verify2FA } = useAuth(); // Use the auth context instead of direct API call
   const [verificationCode, setVerificationCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -44,48 +45,40 @@ const TwoFactorVerification = ({ temporaryToken, onVerificationSuccess, onCancel
     }
   };
   
-  // In TwoFactorVerification.jsx
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  if (!verificationCode || 
-      (!isUsingRecoveryCode && verificationCode.length !== 6) ||
-      (isUsingRecoveryCode && verificationCode.length < 8)) {
-    setError(`Please enter a valid ${isUsingRecoveryCode ? 'recovery' : 'verification'} code`);
-    return;
-  }
-  
-  try {
-    setIsLoading(true);
-    setError(null);
+  // Handle verification code submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     
-    console.log('Verifying 2FA code:', {
-      temporaryToken: !!temporaryToken,
-      codeLength: verificationCode.length,
-      isRecoveryCode: isUsingRecoveryCode
-    });
-    
-    // Ensure we have a token
-    const tokenToUse = temporaryToken || sessionStorage.getItem('tempToken');
-    if (!tokenToUse) {
-      throw new Error('Verification token not found. Please try logging in again.');
+    if (!verificationCode || 
+        (!isUsingRecoveryCode && verificationCode.length !== 6) ||
+        (isUsingRecoveryCode && verificationCode.length < 8)) {
+      setError(`Please enter a valid ${isUsingRecoveryCode ? 'recovery' : 'verification'} code`);
+      return;
     }
     
-    const response = await verify2FALogin(tokenToUse, verificationCode, isUsingRecoveryCode);
-    console.log('2FA verification successful, token received');
-    
-    // Call the success callback with the token and user info
-    if (onVerificationSuccess) {
-      onVerificationSuccess(response.token, response.data.user);
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      // Use auth context's verify2FA method instead of direct API call
+      const response = await verify2FA(verificationCode, isUsingRecoveryCode);
+      
+      // Call the success callback with the token and user info
+      if (onVerificationSuccess) {
+        onVerificationSuccess(response.token, response.data.user);
+      }
+      
+    } catch (err) {
+      setError(err.message || 'Failed to verify code. Please try again.');
+      
+      // Store the error in session storage in case we navigate away
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('2fa_error', err.message || 'Failed to verify code. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
     }
-    
-  } catch (err) {
-    console.error('2FA verification error:', err);
-    setError(err.message || 'Failed to verify code. Please try again.');
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
   
   // Toggle between verification code and recovery code
   const toggleCodeType = () => {

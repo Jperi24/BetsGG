@@ -43,14 +43,21 @@ const fetchWithRetry = async (query, variables, retries = 3, delay = 1000) => {
   throw new Error('Failed to fetch data after retries');
 };
 
-// Get featured tournaments
+// src/integrations/startgg/client.js - Alternative approach
+
+// Updated for a simpler approach without sorting
 const getFeaturedTournaments = async (afterDate, page = 1, perPage = 25) => {
   const data = await fetchWithRetry(GET_FEATURED_TOURNAMENTS_QUERY, {
     afterDate,
     page,
-    perPage,
+    perPage
   });
-  return data.tournaments.nodes;
+  
+  // Sort them manually by startAt in descending order (newest first)
+  const tournaments = data.tournaments.nodes;
+  tournaments.sort((a, b) => b.startAt - a.startAt);
+  
+  return tournaments;
 };
 
 // Get all tournaments
@@ -59,10 +66,15 @@ const getTournaments = async (afterDate, beforeDate, page = 1, perPage = 25) => 
     afterDate,
     beforeDate,
     page,
-    perPage,
+    perPage
   });
+  
+  // Sort manually by startAt in descending order
+  const tournaments = data.tournaments.nodes;
+  tournaments.sort((a, b) => b.startAt - a.startAt);
+  
   return {
-    tournaments: data.tournaments.nodes,
+    tournaments: tournaments,
     pageInfo: data.tournaments.pageInfo
   };
 };

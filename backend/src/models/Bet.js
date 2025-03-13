@@ -90,6 +90,12 @@ const betSchema = new Schema({
     type: Number, // 1 for contestant1, 2 for contestant2, 0 for draw/cancelled
     default: null
   },
+  cancelledBy: {
+    type: Schema.Types.Mixed, // Can be userId or 'system'
+  },
+  cancelledAt: {
+    type: Date
+  },
   participants: [{
     user: {
       type: Schema.Types.ObjectId,

@@ -148,7 +148,7 @@ const createBet = async (betData, userId) => {
 //     // Validate tournament hasn't ended
 //     const currentTime = Math.floor(Date.now() / 1000);
 //     if (tournament.endAt < currentTime) {
-//       throw new AppError('Cannot create bets for completed tournaments', 400);
+//       throw new AppError('Cannot create bets cmpleted tournaments', 400);
 //     }
 
 //     // Find the event and phase in the tournament
@@ -630,66 +630,12 @@ const getActiveBets = async (limit = 20, offset = 0) => {
 /**
  * Cancel a bet (admin only)
  */
-const cancelBet = async (betId, reason, userId) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+// Modify in src/services/betting/index.js
 
-  try {
-    // Find the bet
-    const bet = await Bet.findById(betId).session(session);
-    if (!bet) {
-      throw new AppError('Bet not found', 404);
-    }
+/**
+ * Cancel a bet (admin or system)
+ */
 
-    // Check user role
-    const user = await User.findById(userId).session(session);
-    if (!user || user.role !== 'admin') {
-      throw new AppError('Not authorized to perform this action', 403);
-    }
-
-    // Can only cancel open or in_progress bets
-    if (!['open', 'in_progress'].includes(bet.status)) {
-      throw new AppError(`Cannot cancel a bet with status: ${bet.status}`, 400);
-    }
-
-    // Update bet status
-    bet.status = 'cancelled';
-    bet.disputeReason = reason;
-    bet.winner = 0; // No winner
-    await bet.save({ session });
-
-    // Refund all participants
-    for (const participant of bet.participants) {
-      const user = await User.findById(participant.user).session(session);
-      if (user) {
-        // Add funds back to user
-        user.balance += participant.amount;
-        await user.save({ session });
-
-        // Create refund transaction
-        const transaction = new Transaction({
-          user: participant.user,
-          type: 'refund',
-          amount: participant.amount,
-          currency: 'ETH',
-          status: 'completed',
-          betId: bet._id,
-          description: `Refund for cancelled bet: ${bet.tournamentName} - ${bet.matchName}`
-        });
-
-        await transaction.save({ session });
-      }
-    }
-
-    await session.commitTransaction();
-    return bet;
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
-  } finally {
-    session.endSession();
-  }
-};
 
 /**
  * Update bet status
@@ -733,6 +679,5 @@ module.exports = {
   claimWinnings,
   reportDispute,
   getActiveBets,
-  cancelBet,
   updateBetStatus
 };

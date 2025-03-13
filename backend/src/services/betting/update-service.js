@@ -138,6 +138,160 @@ const processRefunds = async (bet, session) => {
   }
 };
 
+// Add to src/services/betting/update-service.js
+
+/**
+ * Check if a set has been cancelled or no longer exists
+ */
+
+const cancelBet = async (betId, reason, userId, isSystem = false) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    // Find the bet
+    const bet = await Bet.findById(betId).session(session);
+    if (!bet) {
+      throw new AppError('Bet not found', 404);
+    }
+
+    // Check user role if not a system action
+    if (!isSystem) {
+      const user = await User.findById(userId).session(session);
+      if (!user || user.role !== 'admin') {
+        throw new AppError('Not authorized to perform this action', 403);
+      }
+    }
+
+    // Can only cancel open or in_progress bets
+    if (!['open', 'in_progress'].includes(bet.status)) {
+      throw new AppError(`Cannot cancel a bet with status: ${bet.status}`, 400);
+    }
+
+    // Update bet status
+    bet.status = 'cancelled';
+    bet.disputeReason = reason;
+    bet.winner = 0; // No winner
+    bet.cancelledBy = isSystem ? 'system' : userId;
+    bet.cancelledAt = new Date();
+    await bet.save({ session });
+
+    // Refund all participants
+    for (const participant of bet.participants) {
+      const user = await User.findById(participant.user).session(session);
+      if (user) {
+        // Add funds back to user
+        user.balance += participant.amount;
+        await user.save({ session });
+
+        // Create refund transaction
+        const transaction = new Transaction({
+          user: participant.user,
+          type: 'refund',
+          amount: participant.amount,
+          currency: 'ETH',
+          status: 'completed',
+          betId: bet._id,
+          description: `Refund for cancelled bet: ${bet.tournamentName} - ${bet.matchName}. Reason: ${reason}`
+        });
+
+        await transaction.save({ session });
+      }
+    }
+
+    await session.commitTransaction();
+    return bet;
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
+};
+const checkForCancelledSets = async () => {
+  if (isUpdating) {
+    console.log('Bet update is already in progress');
+    return;
+  }
+
+  isUpdating = true;
+  console.log('Starting check for cancelled sets...');
+  
+  try {
+    // Find all open or in_progress bets
+    const activeBets = await Bet.find({
+      status: { $in: ['open', 'in_progress'] }
+    });
+    
+    console.log(`Found ${activeBets.length} active bets to check for cancellations`);
+    
+    // Process each bet
+    for (const bet of activeBets) {
+      try {
+        // Fetch the latest set info from Start.GG API
+        let set;
+        try {
+          set = await startGGApi.getSetById(bet.setId);
+        } catch (apiError) {
+          console.error(`Error fetching set ${bet.setId} from API:`, apiError);
+          // Continue to next bet if API call fails
+          continue;
+        }
+        
+        // Check if set no longer exists or has been cancelled
+        if (!set) {
+          console.log(`Set ${bet.setId} no longer exists in tournament ${bet.tournamentSlug}, cancelling bet ${bet._id}`);
+          await cancelBet(
+            bet._id, 
+            'Set no longer exists in tournament structure', 
+            null, // Use system admin ID or create a specific mechanism for system actions
+            true  // Flag for system-initiated cancellation
+          );
+          continue;
+        }
+        
+        // Check if any competitors have changed (DQ, replacement, etc.)
+        if (set.slots && set.slots.length === 2) {
+          const competitor1Changed = set.slots[0].entrant && 
+                                    set.slots[0].entrant.id.toString() !== bet.contestant1.id.toString();
+          const competitor2Changed = set.slots[1].entrant && 
+                                    set.slots[1].entrant.id.toString() !== bet.contestant2.id.toString();
+          
+          if (competitor1Changed || competitor2Changed) {
+            console.log(`Competitors changed for set ${bet.setId}, cancelling bet ${bet._id}`);
+            await cancelBet(
+              bet._id, 
+              'Competitors have changed for this match', 
+              null,
+              true
+            );
+            continue;
+          }
+        }
+        
+        // Check if set has been explicitly cancelled in the tournament
+        if (set.state === 4) { // Assuming state 4 is 'cancelled' in Start.GG API
+          console.log(`Set ${bet.setId} has been cancelled, cancelling bet ${bet._id}`);
+          await cancelBet(
+            bet._id, 
+            'Match has been cancelled by tournament organizers', 
+            null,
+            true
+          );
+        }
+      } catch (error) {
+        console.error(`Error checking for cancellation of bet ${bet._id}:`, error);
+      }
+    }
+    
+    console.log('Cancelled sets check completed');
+  } catch (error) {
+    console.error('Error in checkForCancelledSets:', error);
+  } finally {
+    isUpdating = false;
+  }
+};
+
 /**
  * Setup scheduled updates
  */
@@ -147,6 +301,7 @@ const setupScheduledUpdates = (intervalMinutes = 10) => {
   
   // Run immediately on startup
   updateAllBets();
+  checkForCancelledSets();
   
   // Then schedule regular updates
   setInterval(updateAllBets, interval);
@@ -156,6 +311,7 @@ const setupScheduledUpdates = (intervalMinutes = 10) => {
 
 module.exports = {
   updateAllBets,
+  checkForCancelledSets,
   updateBetStatus,
   setupScheduledUpdates
 };

@@ -24,12 +24,12 @@ async function startServer() {
     await cleanupExpiredTournaments.cleanupExpiredTournaments();
     
     // Initialize tournament cache
-    await tournamentService.initializeCache();
-    
-    // Setup scheduled updates for tournament data
-    tournamentService.setupScheduledUpdates();
 
+  
     await tournamentService.initializeCache();
+ 
+
+
     
     // Setup scheduled updates for tournament data
     tournamentService.setupScheduledUpdates();
