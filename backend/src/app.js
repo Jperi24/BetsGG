@@ -15,6 +15,8 @@ const authRoutes = require('./api/auth/routes');
 const tournamentRoutes = require('./api/tournaments/routes');
 const betsRoutes = require('./api/bets/routes');
 const walletRoutes = require('./api/wallet/routes');
+const userRoutes = require('./api/user/routes');
+const notificationsRoutes = require('./api/notifications/routes');
 
 // Import error handling middleware
 const errorHandler = require('./middleware/error');
@@ -106,6 +108,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tournaments', tournamentRoutes);
 app.use('/api/bets', betsRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

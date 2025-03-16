@@ -489,3 +489,79 @@ exports.regenerateRecoveryCodes = async (req, res, next) => {
     next(error);
   }
 };
+
+// Additions to src/api/auth/controller.js
+
+/**
+ * Export the user's data
+ */
+exports.exportData = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    
+    // Get user data without sensitive fields
+    const user = await User.findById(userId);
+    
+    // Get user's transactions
+    const transactions = await Transaction.find({ user: userId });
+    
+    // Get user's bets
+    const createdBets = await Bet.find({ creator: userId });
+    const participatedBets = await Bet.find({ 'participants.user': userId });
+    
+    // Assemble the export data
+    const exportData = {
+      userProfile: {
+        username: user.username,
+        email: user.email,
+        walletAddress: user.walletAddress,
+        balance: user.balance,
+        createdAt: user.createdAt
+      },
+      transactions: transactions.map(t => ({
+        type: t.type,
+        amount: t.amount,
+        currency: t.currency,
+        status: t.status,
+        createdAt: t.createdAt,
+        description: t.description
+      })),
+      betsCreated: createdBets.map(b => ({
+        tournamentName: b.tournamentName,
+        matchName: b.matchName,
+        contestant1: b.contestant1.name,
+        contestant2: b.contestant2.name,
+        totalPool: b.totalPool,
+        status: b.status,
+        winner: b.winner,
+        createdAt: b.createdAt
+      })),
+      betsParticipated: participatedBets.map(b => {
+        const userParticipation = b.participants.find(
+          p => p.user.toString() === userId
+        );
+        
+        return {
+          tournamentName: b.tournamentName,
+          matchName: b.matchName,
+          contestant1: b.contestant1.name,
+          contestant2: b.contestant2.name,
+          prediction: userParticipation ? 
+            (userParticipation.prediction === 1 ? b.contestant1.name : b.contestant2.name) : null,
+          amount: userParticipation ? userParticipation.amount : null,
+          status: b.status,
+          winner: b.winner ? 
+            (b.winner === 1 ? b.contestant1.name : b.contestant2.name) : null,
+          createdAt: b.createdAt
+        };
+      })
+    };
+    
+    res.status(200).json({
+      status: 'success',
+      data: exportData
+    });
+  } catch (error) {
+    next(error);
+  }
+};
