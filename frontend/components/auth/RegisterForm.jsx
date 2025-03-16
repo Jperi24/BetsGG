@@ -48,6 +48,7 @@ const RegisterForm = ({ redirectPath = '/dashboard' }) => {
       await register(username, email, password);
       router.push(redirectPath);
     } catch (err) {
+      setError(err);
       setError(err.message || 'Failed to create account. Please try again.');
     } finally {
       setIsLoading(false);

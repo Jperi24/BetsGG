@@ -76,11 +76,14 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
         setShowingTwoFactor(true);
       }
       
+
+      
     } catch (err) {
       console.error('Login error:', err);
       setError(err.message || 'Failed to log in. Please check your credentials.');
     } finally {
       setIsLoading(false);
+      router.push(redirectPath);
     }
   };
   

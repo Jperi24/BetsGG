@@ -127,7 +127,7 @@ export const updateProfile = async (data: {
   email?: string; 
   currentPassword: string 
 }): Promise<{ data: { user: User } }> => {
-  const response = await apiClient.patch('/auth/profile', data);
+  const response = await apiClient.patch('/user/profile', data);
   return handleApiResponse(response);
 };
 
@@ -137,7 +137,7 @@ export const updateProfile = async (data: {
 export const deleteAccount = async (data: { 
   password: string 
 }): Promise<{ status: string; message: string }> => {
-  const response = await apiClient.delete('/auth/account', { data });
+  const response = await apiClient.delete('/user/account', { data });
   return handleApiResponse(response);
 };
 
@@ -145,6 +145,6 @@ export const deleteAccount = async (data: {
  * Export all user data
  */
 export const exportUserData = async (): Promise<{ data: any }> => {
-  const response = await apiClient.get('/auth/export-data');
+  const response = await apiClient.get('/user/export-data');
   return handleApiResponse(response);
 };
