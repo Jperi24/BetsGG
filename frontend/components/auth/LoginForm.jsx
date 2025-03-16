@@ -74,6 +74,8 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
       if (response.requires2FA) {
         console.log('2FA required, showing verification form');
         setShowingTwoFactor(true);
+      }else{
+        router.push(redirectPath);
       }
       
 
@@ -83,7 +85,8 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
       setError(err.message || 'Failed to log in. Please check your credentials.');
     } finally {
       setIsLoading(false);
-      router.push(redirectPath);
+      
+      
     }
   };
   

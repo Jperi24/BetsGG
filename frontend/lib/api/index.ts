@@ -46,13 +46,7 @@ const apiClient = axios.create({
 // Request interceptor
 apiClient.interceptors.request.use(
   (config) => {
-    console.log('API Request:', {
-      method: config.method,
-      url: config.url,
-      baseURL: config.baseURL,
-      data: config.data,
-      headers: config.headers
-    });
+ 
 
     // Get token from localStorage if we're in a browser environment
     if (typeof window !== 'undefined') {
