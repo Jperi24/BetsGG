@@ -117,3 +117,34 @@ export const getRecoveryCodes = async (): Promise<{ data: { recoveryCodes: strin
   const response = await apiClient.get('/auth/2fa/recovery-codes');
   return handleApiResponse(response);
 };
+
+
+/**
+ * Update user profile information
+ */
+export const updateProfile = async (data: { 
+  username?: string; 
+  email?: string; 
+  currentPassword: string 
+}): Promise<{ data: { user: User } }> => {
+  const response = await apiClient.patch('/auth/profile', data);
+  return handleApiResponse(response);
+};
+
+/**
+ * Delete the user's account
+ */
+export const deleteAccount = async (data: { 
+  password: string 
+}): Promise<{ status: string; message: string }> => {
+  const response = await apiClient.delete('/auth/account', { data });
+  return handleApiResponse(response);
+};
+
+/**
+ * Export all user data
+ */
+export const exportUserData = async (): Promise<{ data: any }> => {
+  const response = await apiClient.get('/auth/export-data');
+  return handleApiResponse(response);
+};
