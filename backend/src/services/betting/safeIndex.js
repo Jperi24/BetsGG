@@ -4,16 +4,17 @@ const Bet = require('../../models/Bet');
 const User = require('../../models/User');
 const Transaction = require('../../models/Transactions');
 const tournamentService = require('../tournament');
-const notificationService = require('../notification');
 const { AppError } = require('../../middleware/error');
 
 /**
  * Create a new bet
  */
-
 const createBet = async (betData, userId) => {
+  
+
   const session = await mongoose.startSession();
   session.startTransaction();
+  
 
   try {
     // Validate tournament exists
@@ -33,10 +34,16 @@ const createBet = async (betData, userId) => {
       throw new AppError('Phase not found in event', 404);
     }
 
+    
+    
+
     // Get sets for this phase to find the specific match
     const sets = await tournamentService.getSetsByPhaseId(betData.phaseId);
     
     const set = sets.find(s => String(s.id) === String(betData.setId));
+
+
+    
     
     if (!set) {
       throw new AppError('Match not found in phase', 404);
@@ -44,6 +51,8 @@ const createBet = async (betData, userId) => {
     if (set.state === 3) { // 3 is the "completed" state in Start.GG API
       throw new AppError('Cannot create a bet for a completed match', 400);
     }
+
+    
 
     // Validate match has two contestants
     if (!set.slots || set.slots.length !== 2 || !set.slots[0].entrant || !set.slots[1].entrant) {
@@ -70,9 +79,14 @@ const createBet = async (betData, userId) => {
     if (existingBet) {
       throw new AppError('A betting pool already exists for this match', 400);
     }
-  
-    const cleanSlug = tournament.slug.replace(/^tournament\//, ""); 
     
+  
+
+    const cleanSlug = tournament.slug.replace(/^tournament\//, ""); 
+   
+    
+    
+
     // Create new bet
     const newBet = new Bet({
       tournamentId: tournament.id,
@@ -108,10 +122,6 @@ const createBet = async (betData, userId) => {
     );
 
     await session.commitTransaction();
-    
-    // Send notification after successful transaction
-    await notificationService.notifyBetCreated(userId, newBet);
-    
     return newBet;
   } catch (error) {
     await session.abortTransaction();
@@ -120,7 +130,6 @@ const createBet = async (betData, userId) => {
     session.endSession();
   }
 };
-
 
 /**
  * Place a bet on an existing bet
@@ -282,7 +291,48 @@ const placeBet = async (betId, prediction, amount, userId) => {
       throw new AppError('This bet is no longer accepting participants', 400);
     }
 
-    // Additional validation logic (we're skipping some to keep it concise)...
+    // Double-check with the tournament API if the match is still open
+    try {
+      // Get the latest set info from Start.GG API
+      const set = await startGGApi.getSetById(bet.setId);
+      
+      if (!set) {
+        throw new AppError('Match data could not be retrieved', 500);
+      }
+      
+      // Check if match is already completed
+      if (set.state === 3) { // 3 is the "completed" state in Start.GG API
+        // Automatically update the bet status
+        bet.status = 'in_progress';
+        
+        if (set.winnerId) {
+          bet.status = 'completed';
+          if (set.winnerId === bet.contestant1.id) {
+            bet.winner = 1;
+          } else if (set.winnerId === bet.contestant2.id) {
+            bet.winner = 2;
+          }
+          bet.resultDeterminedAt = new Date();
+        }
+        
+        await bet.save({ session });
+        throw new AppError('This match has already been completed - betting is closed', 400);
+      }
+      
+      // Check if match is in progress
+      if (set.state === 2) { // 2 is the "in progress" state
+        bet.status = 'in_progress';
+        await bet.save({ session });
+        throw new AppError('This match is already in progress - betting is closed', 400);
+      }
+    } catch (apiError) {
+      // If we can't verify with the API, rely on our internal status
+      if (apiError.message.includes('betting is closed')) {
+        throw apiError; // Re-throw the specific error
+      }
+      // Log the error but continue with the bet's current status
+      console.error(`Failed to validate match status with Start.GG API: ${apiError.message}`);
+    }
 
     // Check if user has already participated
     if (bet.hasUserParticipated(userId)) {
@@ -352,17 +402,6 @@ const placeBet = async (betId, prediction, amount, userId) => {
     );
 
     await session.commitTransaction();
-    
-    // Send notifications after successful transaction
-    await notificationService.notifyBetAccepted(userId, bet, amount, prediction);
-    
-    // Also notify the creator of the bet if it's not the current user
-    if (bet.creator && !bet.creator.equals(userId)) {
-      await notificationService.notifyCreatorOfAcceptance(bet.creator, bet, amount, {
-        username: user.username
-      });
-    }
-    
     return bet;
   } catch (error) {
     await session.abortTransaction();
@@ -534,10 +573,6 @@ const claimWinnings = async (betId, userId) => {
     await commissionTransaction.save({ session });
 
     await session.commitTransaction();
-    
-    // Send win notification
-    await notificationService.notifyBetWin(userId, bet, userBet, netWinnings);
-    
     return {
       success: true,
       grossWinnings,
@@ -552,8 +587,6 @@ const claimWinnings = async (betId, userId) => {
     session.endSession();
   }
 };
-
-
 /**
  * Report a dispute for a bet
  */
@@ -608,99 +641,32 @@ const getActiveBets = async (limit = 20, offset = 0) => {
  * Update bet status
  */
 const updateBetStatus = async (betId, status, winner) => {
-  // Start transaction
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  
-  try {
-    // Validate status
-    if (!['open', 'in_progress', 'completed', 'cancelled'].includes(status)) {
-      throw new AppError('Invalid status', 400);
-    }
-
-    // Find the bet
-    const bet = await Bet.findById(betId).session(session);
-    if (!bet) {
-      throw new AppError('Bet not found', 404);
-    }
-
-    const previousStatus = bet.status;
-    const previousWinner = bet.winner;
-    
-    // Update status
-    bet.status = status;
-    
-    // If status is 'completed', set winner
-    if (status === 'completed') {
-      if (winner !== 0 && winner !== 1 && winner !== 2) {
-        throw new AppError('Winner must be 0 (draw/cancelled), 1 (contestant 1), or 2 (contestant 2)', 400);
-      }
-      
-      bet.winner = winner;
-      bet.resultDeterminedAt = new Date();
-    }
-
-    await bet.save({ session });
-    
-    // If bet is completed and has a winner (not a draw), notify participants
-    if (status === 'completed' && winner > 0 && (previousStatus !== 'completed' || previousWinner !== winner)) {
-      // Send notifications to participants
-      for (const participant of bet.participants) {
-        if (participant.prediction === winner) {
-          // User wins - notification will be sent when they claim winnings
-        } else {
-          // User loses
-          await notificationService.notifyBetLoss(
-            participant.user,
-            bet,
-            participant.amount
-          );
-        }
-      }
-    }
-    
-    // If bet is cancelled and previously wasn't, process refunds
-    if (status === 'cancelled' && previousStatus !== 'cancelled') {
-      // Process refunds (similar to cancelBet function)
-      for (const participant of bet.participants) {
-        const user = await User.findById(participant.user).session(session);
-        if (user) {
-          // Add funds back to user
-          user.balance += participant.amount;
-          await user.save({ session });
-
-          // Create refund transaction
-          const transaction = new Transaction({
-            user: participant.user,
-            type: 'refund',
-            amount: participant.amount,
-            currency: 'ETH',
-            status: 'completed',
-            betId: bet._id,
-            description: `Refund for cancelled bet: ${bet.tournamentName} - ${bet.matchName}`
-          });
-
-          await transaction.save({ session });
-          
-          // Send cancellation notification
-          await notificationService.notifyBetCancelled(
-            participant.user, 
-            bet, 
-            "Bet automatically cancelled by system", 
-            participant.amount
-          );
-        }
-      }
-    }
-
-    await session.commitTransaction();
-    return bet;
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
-  } finally {
-    session.endSession();
+  // Validate status
+  if (!['open', 'in_progress', 'completed', 'cancelled'].includes(status)) {
+    throw new AppError('Invalid status', 400);
   }
+
+  // Find the bet
+  const bet = await Bet.findById(betId);
+  if (!bet) {
+    throw new AppError('Bet not found', 404);
+  }
+
+  // Update status
+  bet.status = status;
+  
+  // If status is 'completed', set winner
+  if (status === 'completed') {
+    if (winner !== 0 && winner !== 1 && winner !== 2) {
+      throw new AppError('Winner must be 0 (draw/cancelled), 1 (contestant 1), or 2 (contestant 2)', 400);
+    }
+    
+    bet.winner = winner;
+    bet.resultDeterminedAt = new Date();
+  }
+
+  await bet.save();
+  return bet;
 };
 
 module.exports = {

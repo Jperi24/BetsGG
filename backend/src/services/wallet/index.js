@@ -5,6 +5,7 @@ const Transaction = require('../../models/Transactions');
 const { AppError } = require('../../middleware/error');
 const Web3 = require('web3');
 const ethers = require('ethers');
+const notificationService = require('../notification');
 
 /**
  * Helper to validate wallet addresses
@@ -158,6 +159,13 @@ const processDeposit = async (transactionId, txHash) => {
     
     await session.commitTransaction();
     
+    // Send deposit confirmation notification
+    await notificationService.notifyDepositConfirmed(
+      user._id,
+      transaction.amount,
+      txHash
+    );
+    
     return { transaction, newBalance: user.balance };
   } catch (error) {
     await session.abortTransaction();
@@ -173,9 +181,9 @@ const processDeposit = async (transactionId, txHash) => {
 const createWithdrawalTransaction = async (userId, amount, currency, walletAddress, network) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-  
+
   try {
-    // Validate input
+    // Validation logic remains the same...
     if (amount < 0.0001) {
       throw new AppError('Amount must be at least 0.0001', 400);
     }
@@ -229,6 +237,20 @@ const createWithdrawalTransaction = async (userId, amount, currency, walletAddre
     
     await session.commitTransaction();
     
+    // Create notification for withdrawal request
+    await notificationService.createNotification(
+      userId,
+      'withdrawal_processed',
+      'Withdrawal Request Submitted',
+      `Your withdrawal request for ${netAmount} ${currency} to address ${formatShortAddress(walletAddress)} has been submitted and is being processed.`,
+      {
+        amount: netAmount,
+        currency,
+        address: walletAddress,
+        status: 'pending'
+      }
+    );
+    
     return { transaction, newBalance: user.balance };
   } catch (error) {
     await session.abortTransaction();
@@ -238,6 +260,12 @@ const createWithdrawalTransaction = async (userId, amount, currency, walletAddre
   }
 };
 
+const formatShortAddress = (address) => {
+  if (address.length > 10) {
+    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+  }
+  return address;
+};
 /**
  * Process a withdrawal (admin function)
  */
@@ -272,6 +300,13 @@ const processWithdrawal = async (transactionId) => {
     
     await session.commitTransaction();
     
+    // Send withdrawal processed notification
+    await notificationService.notifyWithdrawalProcessed(
+      transaction.user,
+      transaction.amount - (transaction.fee || 0),
+      transaction.walletAddress
+    );
+    
     return transaction;
   } catch (error) {
     await session.abortTransaction();
@@ -304,6 +339,19 @@ const processWithdrawal = async (transactionId) => {
             });
             
             await refundTransaction.save({ session: refundSession });
+            
+            // Send notification about the failed withdrawal
+            await notificationService.createNotification(
+              transaction.user,
+              'withdrawal_processed',
+              'Withdrawal Failed - Funds Returned',
+              `Your withdrawal of ${transaction.amount} ${transaction.currency} could not be processed. The funds have been returned to your account.`,
+              {
+                amount: transaction.amount,
+                currency: transaction.currency,
+                status: 'failed'
+              }
+            );
           }
           
           await refundSession.commitTransaction();
@@ -334,5 +382,8 @@ module.exports = {
   createDepositTransaction,
   processDeposit,
   createWithdrawalTransaction,
-  processWithdrawal
+  processWithdrawal,
+  validateWalletAddress,
+  getProvider,
+  formatShortAddress
 };

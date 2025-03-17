@@ -1,21 +1,15 @@
 // src/api/notifications/controller.js
-const NotificationPreferences = require('../../models/NotificationPreferences');
+const notificationService = require('../../services/notification');
 const { AppError } = require('../../middleware/error');
+
 
 /**
  * Get user's notification preferences
  */
 exports.getPreferences = async (req, res, next) => {
   try {
-    // Find preferences or create default
-    let preferences = await NotificationPreferences.findOne({ user: req.user.id });
-    
-    // If preferences don't exist yet, create default ones
-    if (!preferences) {
-      preferences = await NotificationPreferences.create({
-        user: req.user.id
-      });
-    }
+    // Get preferences using the service
+    const preferences = await preferencesService.getUserPreferences(req.user.id);
     
     res.status(200).json({
       status: 'success',
@@ -45,82 +39,150 @@ exports.updatePreferences = async (req, res, next) => {
       });
     }
     
-    // Validate that we're only updating allowed fields
-    const validUpdate = {
-      email: {},
-      push: {}
-    };
-    
-    // Process email preferences
-    if (preferences.email) {
-      const validEmailPrefs = [
-        'tournamentReminders', 
-        'betResults', 
-        'paymentNotifications', 
-        'marketingEmails', 
-        'securityAlerts'
-      ];
-      
-      validEmailPrefs.forEach(pref => {
-        if (typeof preferences.email[pref] === 'boolean') {
-          validUpdate.email[pref] = preferences.email[pref];
-        }
-      });
-    }
-    
-    // Process push preferences
-    if (preferences.push) {
-      const validPushPrefs = [
-        'tournamentReminders', 
-        'betResults', 
-        'paymentNotifications', 
-        'newBettingOpportunities', 
-        'securityAlerts'
-      ];
-      
-      validPushPrefs.forEach(pref => {
-        if (typeof preferences.push[pref] === 'boolean') {
-          validUpdate.push[pref] = preferences.push[pref];
-        }
-      });
-    }
-    
-    // Find and update preferences
-    let userPrefs = await NotificationPreferences.findOne({ user: req.user.id });
-    
-    if (!userPrefs) {
-      // Create new preferences if they don't exist
-      userPrefs = await NotificationPreferences.create({
-        user: req.user.id,
-        email: validUpdate.email,
-        push: validUpdate.push
-      });
-    } else {
-      // Update existing preferences
-      if (Object.keys(validUpdate.email).length > 0) {
-        Object.keys(validUpdate.email).forEach(pref => {
-          userPrefs.email[pref] = validUpdate.email[pref];
-        });
-      }
-      
-      if (Object.keys(validUpdate.push).length > 0) {
-        Object.keys(validUpdate.push).forEach(pref => {
-          userPrefs.push[pref] = validUpdate.push[pref];
-        });
-      }
-      
-      userPrefs.updatedAt = Date.now();
-      await userPrefs.save();
-    }
+    // Update preferences using the service
+    const updatedPrefs = await preferencesService.updateUserPreferences(
+      req.user.id,
+      preferences
+    );
     
     res.status(200).json({
       status: 'success',
       message: 'Notification preferences updated successfully',
       data: {
         preferences: {
-          email: userPrefs.email,
-          push: userPrefs.push
+          email: updatedPrefs.email,
+          push: updatedPrefs.push
         }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }}
+
+/**
+ * Get user's notifications
+ */
+exports.getNotifications = async (req, res, next) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    const unreadOnly = req.query.unreadOnly === 'true';
+    
+    const result = await notificationService.getUserNotifications(
+      req.user.id,
+      limit,
+      offset,
+      unreadOnly
+    );
+    
+    res.status(200).json({
+      status: 'success',
+      results: result.notifications.length,
+      unreadCount: result.unreadCount,
+      data: {
+        notifications: result.notifications
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Mark a notification as read
+ */
+exports.markAsRead = async (req, res, next) => {
+  try {
+    const { notificationId } = req.params;
+    
+    if (!notificationId) {
+      return next(new AppError('Notification ID is required', 400));
+    }
+    
+    const notification = await notificationService.markNotificationAsRead(
+      notificationId,
+      req.user.id
+    );
+    
+    if (!notification) {
+      return next(new AppError('Notification not found', 404));
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        notification
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Mark all notifications as read
+ */
+exports.markAllAsRead = async (req, res, next) => {
+  try {
+    const count = await notificationService.markAllAsRead(req.user.id);
+    
+    res.status(200).json({
+      status: 'success',
+      message: `${count} notification(s) marked as read`,
+      data: {
+        count
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Delete a notification
+ */
+exports.deleteNotification = async (req, res, next) => {
+  try {
+    const { notificationId } = req.params;
+    
+    if (!notificationId) {
+      return next(new AppError('Notification ID is required', 400));
+    }
+    
+    const success = await notificationService.deleteNotification(
+      notificationId,
+      req.user.id
+    );
+    
+    if (!success) {
+      return next(new AppError('Notification not found', 404));
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Notification deleted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get unread notification count
+ */
+exports.getUnreadCount = async (req, res, next) => {
+  try {
+    const { unreadCount } = await notificationService.getUserNotifications(
+      req.user.id,
+      0, // No notifications needed, just the count
+      0,
+      true
+    );
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        unreadCount
       }
     });
   } catch (error) {

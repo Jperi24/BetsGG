@@ -1,5 +1,4 @@
-// src/services/account/index.js - Add notification integration
-
+// src/services/account/index.js
 const mongoose = require('mongoose');
 const User = require('../../models/User');
 const Transaction = require('../../models/Transactions');
@@ -62,11 +61,11 @@ const updateUserProfile = async (userId, updateData, currentPassword) => {
       { new: true, runValidators: true, session }
     );
     
+    // Send notification about profile changes
+    await notificationService.sendProfileUpdatedNotification(userId, updateData);
+    
     // Commit transaction
     await session.commitTransaction();
-    
-    // Send notification about profile changes
-    await notificationService.notifyAccountUpdated(userId, updateData);
     
     return updatedUser;
   } catch (error) {
@@ -154,15 +153,6 @@ const exportUserData = async (userId) => {
       })
     };
     
-    // Create notification for data export
-    await notificationService.createNotification(
-      userId,
-      'security_alert',
-      'Account Data Exported',
-      'Your account data was exported at your request. If you did not request this, please contact support immediately.',
-      { action: 'data_export', timestamp: new Date() }
-    );
-    
     return exportData;
   } catch (error) {
     throw error;
@@ -192,10 +182,6 @@ const deleteUserAccount = async (userId, password) => {
       throw new AppError('Password is incorrect', 401);
     }
     
-    // Before deleting, store email to send final notification
-    const userEmail = user.email;
-    const username = user.username;
-    
     // Delete user's transactions
     await Transaction.deleteMany({ user: userId }).session(session);
     
@@ -217,33 +203,11 @@ const deleteUserAccount = async (userId, password) => {
     // Delete notification preferences
     await NotificationPreferences.deleteOne({ user: userId }).session(session);
     
-    // Delete all notifications for this user
-    const Notification = require('../../models/Notification');  
-    await Notification.deleteMany({ user: userId }).session(session);
-    
     // Finally, delete the user
     await User.findByIdAndDelete(userId).session(session);
     
     // Commit transaction
     await session.commitTransaction();
-    
-    // Send email notification (outside the transaction since user is deleted)
-    // Using direct email service since the notification service needs a user ID
-    const emailService = require('../email');
-    await emailService.sendEmail({
-      to: userEmail,
-      subject: 'Account Deleted - ESports Betting',
-      text: `Dear ${username}, Your ESports Betting account has been permanently deleted as requested. We're sorry to see you go. If this was a mistake, please contact our support team immediately.`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2>Account Deleted</h2>
-          <p>Dear ${username},</p>
-          <p>Your ESports Betting account has been permanently deleted as requested.</p>
-          <p>We're sorry to see you go. If this was a mistake, please contact our support team immediately.</p>
-          <p>Regards,<br>ESports Betting Team</p>
-        </div>
-      `
-    });
     
     return true;
   } catch (error) {
@@ -256,11 +220,8 @@ const deleteUserAccount = async (userId, password) => {
   }
 };
 
-
-
 module.exports = {
   updateUserProfile,
   exportUserData,
-  deleteUserAccount,
-
+  deleteUserAccount
 };
