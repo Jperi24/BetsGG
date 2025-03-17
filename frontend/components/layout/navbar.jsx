@@ -4,15 +4,18 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/providers/auth-providers';
-import { Menu, X, User, LogOut, Wallet, Trophy, Home, Info } from 'lucide-react';
+import { useNotifications } from '@/providers/notification-provider';
+import NotificationDropdown from '@/components/notifications/NotificationDropdown';
+import { Menu, X, User, LogOut, Wallet, Trophy, Home, Info, Bell } from 'lucide-react';
 
 export default function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
+  const { unreadCount } = useNotifications();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const pathname = usePathname();
   
   // Check if current route is active
-  const isActive = (path: string) => {
+  const isActive = (path) => {
     return pathname === path || pathname?.startsWith(`${path}/`);
   };
   
@@ -106,6 +109,11 @@ export default function Navbar() {
                   {user?.balance?.toFixed(4)} ETH
                 </div>
                 
+                {/* Notification Dropdown */}
+                <div className="relative mr-3">
+                  <NotificationDropdown />
+                </div>
+                
                 {/* User Menu */}
                 <div className="relative ml-3 flex items-center space-x-4">
                   <Link 
@@ -145,6 +153,21 @@ export default function Navbar() {
           
           {/* Mobile menu button */}
           <div className="flex items-center sm:hidden">
+            {isAuthenticated && (
+              <Link
+                href="/notifications"
+                className="relative p-2 mr-2 text-indigo-100 hover:text-white"
+                aria-label="Notifications"
+              >
+                <Bell className="h-6 w-6" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </Link>
+            )}
+            
             <button
               onClick={toggleMenu}
               className="inline-flex items-center justify-center p-2 rounded-md text-indigo-100 hover:text-white hover:bg-indigo-500 focus:outline-none"
@@ -221,7 +244,10 @@ export default function Navbar() {
                 } block px-3 py-2 rounded-md text-base font-medium`}
                 onClick={() => setIsMenuOpen(false)}
               >
-                My Bets
+                <div className="flex items-center">
+                  <Trophy className="h-5 w-5 mr-2" />
+                  My Bets
+                </div>
               </Link>
               
               <Link
@@ -236,6 +262,26 @@ export default function Navbar() {
                 <div className="flex items-center">
                   <Wallet className="h-5 w-5 mr-2" />
                   Wallet
+                </div>
+              </Link>
+              
+              <Link
+                href="/notifications"
+                className={`${
+                  isActive('/notifications') 
+                    ? 'bg-indigo-700 text-white' 
+                    : 'text-indigo-100 hover:bg-indigo-500 hover:text-white'
+                } block px-3 py-2 rounded-md text-base font-medium`}
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <div className="flex items-center">
+                  <Bell className="h-5 w-5 mr-2" />
+                  Notifications
+                  {unreadCount > 0 && (
+                    <span className="ml-2 inline-block bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
                 </div>
               </Link>
               
