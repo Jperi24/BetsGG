@@ -4,13 +4,18 @@ const { AppError } = require('../../middleware/error');
 const passwordResetService = require('../../services/auth/password-reset');
 const twoFactorService = require('../../services/auth/two-factor');
 const emailService = require('../../services/email');
+const sessionService = require("../../services/auth/session")
 
 // Helper function to create and send token
-const createSendToken = (user, statusCode, res, options = {}) => {
+// src/api/auth/controller.js - Update createSendToken function
+const createSendToken = async (user, statusCode, res, options = {}, deviceInfo = {}) => {
   // Generate token based on 2FA status
   const token = options.temp2FA 
     ? user.generateTempJWT() 
     : user.generateJWT();
+  
+  // Create session and get session ID
+  const sessionId = await sessionService.createSession(user.id, deviceInfo);
   
   // Remove sensitive fields from output
   user.password = undefined;
@@ -20,14 +25,13 @@ const createSendToken = (user, statusCode, res, options = {}) => {
   res.status(statusCode).json({
     status: 'success',
     token,
+    sessionId, // Include session ID in response
     requires2FA: user.twoFactorEnabled && options.temp2FA,
     tempToken: options.temp2FA ? user.id : undefined,
     data: {
       user
     }
   });
-
-
 };
 
 // Register a new user
@@ -103,52 +107,30 @@ exports.verifyAndEnableTwoFactor = async (req, res, next) => {
     const userId = req.user.id;
     const { code } = req.body;
     
-    console.log(`2FA verification request received for user ${userId}`);
-    console.log(`Verification code provided: ${code}`);
-    
-    if (!code) {
-      console.log('No verification code provided');
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Verification code is required'
-      });
-    }
-    
     // Try to verify the token
-    try {
-      await twoFactorService.verifyAndEnableTwoFactor(userId, code);
-      console.log(`2FA verification successful for user ${userId}`);
-      
-      // Get user with recovery codes to return them
-      const user = await User.findById(userId).select('+twoFactorRecoveryCodes');
-      
-      // Send 2FA enabled notification
-      await notificationService.send2FAEnabledNotification(userId);
-      
-      res.status(200).json({
-        status: 'success',
-        message: 'Two-factor authentication has been enabled successfully',
-        data: {
-          recoveryCodes: user.twoFactorRecoveryCodes
-        }
-      });
-    } catch (validationError) {
-      console.error(`2FA verification failed for user ${userId}:`, validationError);
-      
-      // Check if there are specific details we can provide to help troubleshooting
-      let errorMessage = validationError.message || 'Failed to verify code. Please try again.';
-      
-      return res.status(validationError.statusCode || 400).json({
-        status: 'fail',
-        message: errorMessage,
-        debug: process.env.NODE_ENV === 'development' ? {
-          providedCode: code,
-          error: validationError.message
-        } : undefined
-      });
-    }
+    await twoFactorService.verifyAndEnableTwoFactor(userId, code);
+    
+    // Get user with recovery codes
+    const user = await User.findById(userId).select('+twoFactorRecoveryCodes');
+    
+    // Invalidate all existing tokens
+    await user.invalidateAllTokens();
+    
+    // Invalidate all sessions except current
+    const currentSessionId = req.headers['x-session-id'];
+    await sessionService.invalidateAllUserSessions(userId, [currentSessionId]);
+    
+    // Send 2FA enabled notification
+    await notificationService.send2FAEnabledNotification(userId);
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Two-factor authentication has been enabled successfully',
+      data: {
+        recoveryCodes: user.twoFactorRecoveryCodes
+      }
+    });
   } catch (error) {
-    console.error('2FA Verification Error:', error);
     next(error);
   }
 };
@@ -161,6 +143,16 @@ exports.disableTwoFactor = async (req, res, next) => {
     // Disable 2FA
     await twoFactorService.disableTwoFactor(userId);
     
+    // Get user
+    const user = await User.findById(userId);
+    
+    // Invalidate all existing tokens
+    await user.invalidateAllTokens();
+    
+    // Invalidate all sessions except current
+    const currentSessionId = req.headers['x-session-id'];
+    await sessionService.invalidateAllUserSessions(userId, [currentSessionId]);
+    
     // Send 2FA disabled notification
     await notificationService.send2FADisabledNotification(userId);
     
@@ -169,7 +161,6 @@ exports.disableTwoFactor = async (req, res, next) => {
       message: 'Two-factor authentication has been disabled'
     });
   } catch (error) {
-    console.error('2FA Disable Error:', error);
     next(error);
   }
 };
@@ -272,6 +263,28 @@ exports.login = async (req, res, next) => {
   }
 };
 
+exports.logout = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const sessionId = req.headers['x-session-id'];
+    
+    // If sessionId is provided, invalidate just that session
+    if (sessionId) {
+      await sessionService.invalidateSession(sessionId);
+    } else {
+      // Otherwise invalidate all sessions for this user
+      await sessionService.invalidateAllUserSessions(userId);
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Successfully logged out'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Verify 2FA token
 exports.verifyTwoFactor = async (req, res, next) => {
   try {
@@ -320,14 +333,15 @@ exports.getMe = async (req, res, next) => {
 };
 
 // Update password
+// src/api/auth/controller.js - in updatePassword function
 exports.updatePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
     
-    // Get user from collection (include password)
+    // Get user from collection
     const user = await User.findById(req.user.id).select('+password');
     
-    // Check if current password is correct
+    // Check current password
     if (!(await user.comparePassword(currentPassword))) {
       return res.status(401).json({
         status: 'fail',
@@ -339,8 +353,18 @@ exports.updatePassword = async (req, res, next) => {
     user.password = newPassword;
     await user.save();
     
-    // Generate new JWT and send response
-    createSendToken(user, 200, res);
+    // Invalidate all existing tokens
+    await user.invalidateAllTokens();
+    
+    // Invalidate all sessions except current one
+    const currentSessionId = req.headers['x-session-id'];
+    await sessionService.invalidateAllUserSessions(user.id, [currentSessionId]);
+    
+    // Create new token and send notification
+    await notificationService.sendPasswordChangedNotification(user.id);
+    
+    // Generate new token
+    await createSendToken(user, 200, res);
   } catch (error) {
     next(error);
   }
@@ -386,31 +410,27 @@ exports.forgotPassword = async (req, res, next) => {
 };
 
 // Reset password
+// src/api/auth/controller.js - in resetPassword function
 exports.resetPassword = async (req, res, next) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
-    
-    if (!password) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Please provide a new password'
-      });
-    }
-    
-    // Validate password complexity
-    if (password.length < 8) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Password must be at least 8 characters long'
-      });
-    }
+
     
     // Reset password
     const user = await passwordResetService.resetPassword(token, password);
     
-    // Log the user in, send JWT
-    createSendToken(user, 200, res);
+    // Invalidate all existing tokens
+    await user.invalidateAllTokens();
+    
+    // Invalidate all sessions
+    await sessionService.invalidateAllUserSessions(user.id);
+    
+    // Send notification
+    await notificationService.sendPasswordChangedNotification(user.id);
+    
+    // Log the user in with new token
+    await createSendToken(user, 200, res);
   } catch (error) {
     next(error);
   }

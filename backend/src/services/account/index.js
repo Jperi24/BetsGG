@@ -11,6 +11,7 @@ const notificationService = require('../notification');
 /**
  * Update user profile information
  */
+// src/services/account/index.js - in updateUserProfile function
 const updateUserProfile = async (userId, updateData, currentPassword) => {
   // Start a transaction
   const session = await mongoose.startSession();
@@ -31,29 +32,8 @@ const updateUserProfile = async (userId, updateData, currentPassword) => {
       throw new AppError('Current password is incorrect', 401);
     }
     
-    // Check for username uniqueness if updating
-    if (updateData.username && updateData.username !== user.username) {
-      const existingUser = await User.findOne({ 
-        username: updateData.username,
-        _id: { $ne: userId }
-      }).session(session);
-      
-      if (existingUser) {
-        throw new AppError('Username already in use', 400);
-      }
-    }
-    
-    // Check for email uniqueness if updating
-    if (updateData.email && updateData.email !== user.email) {
-      const existingUser = await User.findOne({ 
-        email: updateData.email,
-        _id: { $ne: userId }
-      }).session(session);
-      
-      if (existingUser) {
-        throw new AppError('Email already in use', 400);
-      }
-    }
+    // Check if email is being updated
+    const isEmailChange = updateData.email && updateData.email !== user.email;
     
     // Update user
     const updatedUser = await User.findByIdAndUpdate(
@@ -61,6 +41,12 @@ const updateUserProfile = async (userId, updateData, currentPassword) => {
       updateData,
       { new: true, runValidators: true, session }
     );
+    
+    // If email changed, invalidate tokens and sessions
+    if (isEmailChange) {
+      await user.invalidateAllTokens();
+      await sessionService.invalidateAllUserSessions(userId);
+    }
     
     // Commit transaction
     await session.commitTransaction();
@@ -191,6 +177,11 @@ const deleteUserAccount = async (userId, password) => {
     if (!isPasswordCorrect) {
       throw new AppError('Password is incorrect', 401);
     }
+
+    await user.invalidateAllTokens();
+    
+    // Invalidate all sessions before deletion
+    await sessionService.invalidateAllUserSessions(userId);
     
     // Before deleting, store email to send final notification
     const userEmail = user.email;

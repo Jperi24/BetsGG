@@ -44,30 +44,22 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
   
   app.use(cors(corsOptions));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: 'Too many requests from this IP, please try again later.',
-  skip: req => {
-    // Skip rate limiting for whitelisted IPs (if needed)
-    return false;
-  }
-});
-app.use('/api', limiter);
 
-// API specific rate limits
-const authLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // limit each IP to 10 login/register attempts per hour
-  message: 'Too many authentication attempts, please try again later.'
-});
+const { 
+  standardLimiter, 
+  authLimiter, 
+  financialLimiter, 
+  bettingLimiter 
+} = require('./middleware/rate-limit');
+app.use('/api', standardLimiter);
+
+
 
 // Apply auth rate limiter to login and register routes
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
 
 // Body parser, reading data from body into req.body
 app.use(express.json({ limit: '10kb' }));

@@ -26,6 +26,10 @@ const userSchema = new mongoose.Schema({
     minlength: [8, 'Password must be at least 8 characters'],
     select: false
   },
+  tokenVersion: {
+    type: Number,
+    default: 0
+  },
   walletAddress: {
     type: String,
     unique: true,
@@ -55,6 +59,13 @@ const userSchema = new mongoose.Schema({
   },
   passwordResetToken: String,
   passwordResetExpires: Date,
+  passwordResetAttempts: {
+    type: Number,
+    default: 0
+  },
+  passwordResetAttemptsLockUntil: {
+    type: Date
+  },
   
   // Two-factor authentication fields
   twoFactorSecret: {
@@ -106,7 +117,8 @@ userSchema.methods.generateJWT = function() {
       id: this._id, 
       email: this.email, 
       role: this.role,
-      require2FA: this.twoFactorEnabled
+      require2FA: this.twoFactorEnabled,
+      tokenVersion: this.tokenVersion
     },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN }
@@ -147,6 +159,7 @@ userSchema.methods.isLocked = function() {
 };
 
 // Method to handle failed login attempts
+// src/models/User.js - in incrementLoginAttempts method
 userSchema.methods.incrementLoginAttempts = async function() {
   // Reset login attempts if lock has expired
   if (this.lockUntil && this.lockUntil < Date.now()) {
@@ -160,6 +173,21 @@ userSchema.methods.incrementLoginAttempts = async function() {
     if (this.loginAttempts >= 5 && !this.isLocked()) {
       // Lock for 30 minutes
       this.lockUntil = Date.now() + 30 * 60 * 1000;
+      
+      // Invalidate all tokens when account is locked
+      await this.invalidateAllTokens();
+      
+      // Invalidate all sessions when account is locked
+      await sessionService.invalidateAllUserSessions(this._id);
+      
+      // Send notification about account lock
+      await notificationService.createNotification(
+        this._id,
+        'security_alert',
+        'Account Locked',
+        'Your account has been temporarily locked due to too many failed login attempts. Try again in 30 minutes.',
+        { action: 'account_lock' }
+      );
     }
   }
   
@@ -171,6 +199,11 @@ userSchema.methods.resetLoginAttempts = async function() {
   this.loginAttempts = 0;
   this.lockUntil = undefined;
   return await this.save();
+};
+
+userSchema.methods.invalidateAllTokens = async function() {
+  this.tokenVersion += 1;
+  await this.save();
 };
 
 const User = mongoose.model('User', userSchema);

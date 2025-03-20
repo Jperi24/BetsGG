@@ -26,8 +26,7 @@ const generateTotpSecret = async (userId, email) => {
     digits: 6 // Explicitly set 6 digits
   });
   
-  console.log(`Generated secret: ${secret.base32}`);
-  console.log(`Generated otpauth URL: ${secret.otpauth_url}`);
+  
   
   // Generate recovery codes
   const recoveryCodes = Array(8).fill().map(() => 
@@ -82,7 +81,7 @@ const generateTotpSecret = async (userId, email) => {
 // Update this function in backend/src/services/auth/two-factor.js
 
 const verifyAndEnableTwoFactor = async (userId, token) => {
-  console.log(`Verifying 2FA setup for user: ${userId}, token: ${token}`);
+  
   
   // Find user
   const user = await User.findById(userId).select('+twoFactorSecret');
@@ -97,18 +96,17 @@ const verifyAndEnableTwoFactor = async (userId, token) => {
     throw new AppError('Two-factor authentication setup not initiated', 400);
   }
   
-  console.log(`User secret from DB: ${user.twoFactorSecret}`);
-  
+
   // Clean the token - remove any spaces or non-digit characters
   const cleanToken = token.replace(/\D/g, '');
-  console.log(`Cleaned token: ${cleanToken}`);
+
   
   // Generate the current expected token for debugging
   const expectedToken = speakeasy.totp({
     secret: user.twoFactorSecret,
     encoding: 'base32'
   });
-  console.log(`Current expected token: ${expectedToken}`);
+
   
   // Try verification with a larger window to account for time drift
   // Window size of 4 allows for time skew of about +/- 2 minutes
@@ -118,7 +116,7 @@ const verifyAndEnableTwoFactor = async (userId, token) => {
     token: cleanToken,
     window: 4
   });
-  console.log(`Verification with window=4: ${verified}`);
+
   
   // If not verified yet, try with different encoding options
   if (!verified) {
@@ -129,13 +127,13 @@ const verifyAndEnableTwoFactor = async (userId, token) => {
       token: cleanToken,
       window: 4
     });
-    console.log(`Verification with ASCII encoding: ${verified}`);
+   
   }
   
   // If still not verified, try with a more explicit approach
   if (!verified) {
     const currentTime = Math.floor(Date.now() / 1000);
-    console.log(`Current time in seconds: ${currentTime}`);
+   
     
     // Try with an even larger window and explicit time
     verified = speakeasy.totp.verify({

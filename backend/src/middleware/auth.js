@@ -30,11 +30,21 @@ exports.protect = async (req, res, next) => {
     const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
 
     // 3) Check if user still exists
+   
     const currentUser = await User.findById(decoded.id);
+    
     if (!currentUser) {
       return res.status(401).json({
         status: 'fail',
         message: 'The user belonging to this token no longer exists.'
+      });
+    }
+    
+    // Check if token version matches current user's version
+    if (decoded.tokenVersion !== currentUser.tokenVersion) {
+      return res.status(401).json({
+        status: 'fail',
+        message: 'Token is no longer valid. Please log in again.'
       });
     }
 

@@ -47,7 +47,7 @@ const verifyResetToken = async (token) => {
     .update(token)
     .digest('hex');
   
-  // Find user with the token and check if token is still valid
+  // Find user with the token
   const user = await User.findOne({
     passwordResetToken: hashedToken,
     passwordResetExpires: { $gt: Date.now() }
@@ -55,6 +55,12 @@ const verifyResetToken = async (token) => {
   
   if (!user) {
     throw new AppError('Token is invalid or has expired', 400);
+  }
+  
+  // Check if account is locked for too many attempts
+  if (user.passwordResetAttemptsLockUntil && user.passwordResetAttemptsLockUntil > Date.now()) {
+    const minutesLeft = Math.ceil((user.passwordResetAttemptsLockUntil - Date.now()) / (60 * 1000));
+    throw new AppError(`Too many reset attempts. Please try again in ${minutesLeft} minutes.`, 429);
   }
   
   return user;
@@ -67,20 +73,51 @@ const verifyResetToken = async (token) => {
  * @returns {Object} - Updated user document
  */
 const resetPassword = async (token, newPassword) => {
-  // Verify token
-  const user = await verifyResetToken(token);
-  
-  // Update password
-  user.password = newPassword;
-  
-  // Clear reset token fields
-  user.passwordResetToken = undefined;
-  user.passwordResetExpires = undefined;
-  
-  // Save changes
-  await user.save();
-  
-  return user;
+  try {
+    // Verify token
+    const user = await verifyResetToken(token);
+    
+    // Reset password
+    user.password = newPassword;
+    
+    // Clear reset token fields
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    user.passwordResetAttempts = 0;
+    user.passwordResetAttemptsLockUntil = undefined;
+    
+    // Save changes
+    await user.save();
+    
+    return user;
+  } catch (error) {
+    // If token is invalid, increment attempt counter
+    if (error.statusCode === 400 && error.message.includes('Token is invalid')) {
+      const hashedToken = crypto
+        .createHash('sha256')
+        .update(token)
+        .digest('hex');
+      
+      // Find user by token and increment attempt counter
+      const user = await User.findOne({
+        passwordResetToken: hashedToken
+      });
+      
+      if (user) {
+        user.passwordResetAttempts = (user.passwordResetAttempts || 0) + 1;
+        
+        // If too many attempts (5), lock for 30 minutes
+        if (user.passwordResetAttempts >= 5) {
+          user.passwordResetAttemptsLockUntil = Date.now() + (30 * 60 * 1000);
+          user.passwordResetAttempts = 0;
+        }
+        
+        await user.save();
+      }
+    }
+    
+    throw error;
+  }
 };
 
 module.exports = {

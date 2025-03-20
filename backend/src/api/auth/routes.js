@@ -42,6 +42,7 @@ router.use(protect); // All routes after this middleware require authentication
 router.get('/me', authController.getMe);
 router.patch('/update-password', validatePassword, authController.updatePassword);
 router.post('/link-wallet', validateWallet, authController.linkWallet);
+router.post('/logout', protect, authController.logout);
 
 // 2FA routes
 router.get('/2fa/status', authController.getTwoFactorStatus);
