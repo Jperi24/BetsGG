@@ -12,13 +12,13 @@ import {
 import { 
   Bell, 
   Check, 
-  CheckAll, 
   Trash2, 
   ChevronRight, 
   AlertTriangle, 
   Trophy, 
   Wallet, 
-  Settings
+  Settings,
+  CheckCircle
 } from 'lucide-react';
 
 // Notification page with list and preferences
@@ -223,7 +223,7 @@ export default function NotificationsPage() {
               onClick={handleMarkAllAsRead}
               className="flex items-center px-3 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-800"
             >
-              <CheckAll className="h-4 w-4 mr-1" />
+              <CheckCircle className="h-4 w-4 mr-1" />
               Mark all read
             </button>
           )}

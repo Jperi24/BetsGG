@@ -12,7 +12,7 @@ import {
 } from '@/lib/api/notifications';
 import { 
   Bell, 
-  CheckAll, 
+  CheckCircle, 
   Trophy, 
   Wallet, 
   AlertTriangle, 
@@ -197,7 +197,7 @@ export default function NotificationDropdown() {
                   onClick={handleMarkAllAsRead}
                   className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center"
                 >
-                  <CheckAll className="h-3 w-3 mr-1" />
+                  <CheckCircle className="h-3 w-3 mr-1" />
                   Mark all read
                 </button>
               )}
