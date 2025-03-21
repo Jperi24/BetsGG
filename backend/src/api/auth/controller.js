@@ -5,33 +5,49 @@ const passwordResetService = require('../../services/auth/password-reset');
 const twoFactorService = require('../../services/auth/two-factor');
 const emailService = require('../../services/email');
 const sessionService = require("../../services/auth/session")
+const notificationService = require("../../services/notification/index")
 
 // Helper function to create and send token
 // src/api/auth/controller.js - Update createSendToken function
 const createSendToken = async (user, statusCode, res, options = {}, deviceInfo = {}) => {
-  // Generate token based on 2FA status
-  const token = options.temp2FA 
-    ? user.generateTempJWT() 
-    : user.generateJWT();
-  
-  // Create session and get session ID
-  const sessionId = await sessionService.createSession(user.id, deviceInfo);
-  
-  // Remove sensitive fields from output
-  user.password = undefined;
-  user.twoFactorSecret = undefined;
-  user.twoFactorRecoveryCodes = undefined;
-  
-  res.status(statusCode).json({
-    status: 'success',
-    token,
-    sessionId, // Include session ID in response
-    requires2FA: user.twoFactorEnabled && options.temp2FA,
-    tempToken: options.temp2FA ? user.id : undefined,
-    data: {
-      user
+  try {
+    // Generate token based on 2FA status
+    const token = options.temp2FA 
+      ? user.generateTempJWT() 
+      : user.generateJWT();
+    
+    // Create session with error handling
+    let sessionId;
+    try {
+      sessionId = await sessionService.createSession(user.id, deviceInfo);
+    } catch (sessionError) {
+      console.error('Error creating session:', sessionError);
+      // Generate a fallback session ID to avoid breaking the login flow
+      sessionId = uuidv4();
     }
-  });
+    
+    // Remove sensitive fields from output
+    user.password = undefined;
+    user.twoFactorSecret = undefined;
+    user.twoFactorRecoveryCodes = undefined;
+    
+    res.status(statusCode).json({
+      status: 'success',
+      token,
+      sessionId,
+      requires2FA: user.twoFactorEnabled && options.temp2FA,
+      tempToken: options.temp2FA ? user.id : undefined,
+      data: {
+        user
+      }
+    });
+  } catch (error) {
+    console.error('Error in createSendToken:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'An error occurred during authentication. Please try again.'
+    });
+  }
 };
 
 // Register a new user

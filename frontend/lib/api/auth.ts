@@ -68,6 +68,8 @@ export const updatePassword = async (data: { currentPassword: string; newPasswor
   return handleApiResponse(response);
 };
 
+
+
 // Link wallet address to user
 export const linkWallet = async (walletAddress: string): Promise<{ data: { user: User } }> => {
   const response = await apiClient.post('/auth/link-wallet', { walletAddress });

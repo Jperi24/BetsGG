@@ -89,3 +89,22 @@ exports.validateWallet = [
   
   exports.validateRequest
 ];
+
+// Add this to your validation.js file
+exports.validateUpdatePassword = [
+  body('currentPassword')
+    .isString()
+    .notEmpty()
+    .withMessage('Current password is required'),
+  
+  body('newPassword')
+    .isString()
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters long')
+    .matches(/\d/)
+    .withMessage('Password must contain at least one number')
+    .matches(/[a-zA-Z]/)
+    .withMessage('Password must contain at least one letter'),
+  
+  exports.validateRequest
+];

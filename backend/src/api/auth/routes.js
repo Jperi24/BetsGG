@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const authController = require('./controller');
 const { protect } = require('../../middleware/auth');
-const { validateRegister, validateLogin, validatePassword, validateWallet, validateRequest } = require('../../middleware/validation');
+const { validateRegister, validateLogin, validatePassword, validateWallet, validateRequest,validateUpdatePassword } = require('../../middleware/validation');
 const { body } = require('express-validator');
 
 // Public routes
@@ -40,7 +40,8 @@ router.post('/reset-password/:token', validatePassword, authController.resetPass
 // Protected routes (require authentication)
 router.use(protect); // All routes after this middleware require authentication
 router.get('/me', authController.getMe);
-router.patch('/update-password', validatePassword, authController.updatePassword);
+
+router.patch('/update-password', protect, validateUpdatePassword, authController.updatePassword);
 router.post('/link-wallet', validateWallet, authController.linkWallet);
 router.post('/logout', protect, authController.logout);
 

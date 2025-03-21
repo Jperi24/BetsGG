@@ -4,6 +4,7 @@ const seedDatabase = require('./utils/seed-data');
 const tournamentService = require('./services/tournament');
 const cleanupExpiredTournaments = require('./services/tournament/cleanup')
 const betUpdateService = require('./services/betting/update-service');
+const { client: redisClient } = require('./utils/redis');
 
 // Flag to determine if we should seed the database
 const shouldSeedDatabase = process.env.SEED_DATABASE === 'true';
@@ -13,6 +14,21 @@ async function startServer() {
   try {
     // Connect to database
     await connectDB();
+
+    await new Promise((resolve, reject) => {
+      if (redisClient.connected) {
+        resolve();
+        return;
+      }
+      
+      redisClient.once('connect', resolve);
+      redisClient.once('error', (err) => {
+        console.error('Redis connection error during startup:', err);
+        // Continue anyway - we'll have fallbacks
+        resolve();
+      });
+      setTimeout(resolve, 5000);
+    });
     
     // Seed database if needed
     if (shouldSeedDatabase) {

@@ -39,7 +39,9 @@
     "node-cache": "^5.1.2",
     "nodemailer": "^6.10.0",
     "qrcode": "^1.5.4",
+    "redis": "^4.7.0",
     "speakeasy": "^2.0.0",
+    "uuid": "^11.1.0",
     "web3": "^4.16.0",
     "xss-clean": "^0.1.4"
   },
