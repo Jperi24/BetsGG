@@ -44,15 +44,60 @@ const invalidateSession = async (sessionId) => {
   }
 };
 
-// Invalidate all sessions for a user
+// src/services/auth/session.js - Updated invalidateAllUserSessions function
 const invalidateAllUserSessions = async (userId, excludeSessionIds = []) => {
   try {
-    // Implementation would need to change - in the newer Redis client
-    // you'd need to use SCAN instead of KEYS for production use
-    console.log(`Invalidating all sessions for user ${userId}`);
+    // Convert excludeSessionIds to a Set for faster lookups
+    const excludeSet = new Set(excludeSessionIds);
+    
+    // Track sessions to delete
+    const sessionsToDelete = [];
+    
+    // Use SCAN instead of KEYS for production use
+    let cursor = '0';
+    do {
+      // Use SCAN to iterate through keys in batches
+      const [nextCursor, keys] = await client.scan(
+        cursor, 
+        'MATCH', 
+        'session:*', 
+        'COUNT', 
+        100
+      );
+      
+      cursor = nextCursor;
+      
+      // Get session data for each key
+      for (const key of keys) {
+        const sessionData = await getAsync(key);
+        
+        if (sessionData) {
+          try {
+            const session = JSON.parse(sessionData);
+            const sessionId = key.replace('session:', '');
+            
+            // If session belongs to our user and not in exclude list, add to delete list
+            if (session.userId === userId && !excludeSet.has(sessionId)) {
+              sessionsToDelete.push(key);
+            }
+          } catch (parseError) {
+            console.error(`Error parsing session data for key ${key}:`, parseError);
+            // Delete invalid session data
+            sessionsToDelete.push(key);
+          }
+        }
+      }
+    } while (cursor !== '0'); // Continue until we've scanned all keys
+    
+    // Delete all found sessions
+    if (sessionsToDelete.length > 0) {
+      await Promise.all(sessionsToDelete.map(key => delAsync(key)));
+      console.log(`Invalidated ${sessionsToDelete.length} sessions for user ${userId}`);
+    }
+    
     return true;
   } catch (error) {
-    console.error('Error invalidating all user sessions:', error);
+    console.error('Error invalidating user sessions:', error);
     return false;
   }
 };

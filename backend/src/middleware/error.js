@@ -12,13 +12,38 @@ class AppError extends Error {
   }
 }
 
-// Development error handler - detailed error responses
+// Helper to sanitize error messages
+const sanitizeErrorMessage = (message) => {
+  // Remove any potential sensitive data from error messages
+  if (!message) return 'An error occurred';
+  
+  // Remove file paths
+  message = message.replace(/\/[\w\/\.-]+/g, '[path]');
+  
+  // Remove potential DB connection strings
+  message = message.replace(/mongodb(\+srv)?:\/\/[^\s]+/g, '[database-url]');
+  
+  // Remove any stack trace information
+  message = message.replace(/at\s[\w\s\.<>\(\)\/]+/g, '[stack]');
+  
+  return message;
+};
+
+// Development error handler - with sanitized details
 const sendErrorDev = (err, res) => {
+  // Log the full error with stack trace for developers
+  console.error('ERROR:', err);
+  
   res.status(err.statusCode).json({
     status: err.status,
-    error: err,
     message: err.message,
-    stack: err.stack
+    // Include non-sensitive error details that might help debugging
+    error: {
+      name: err.name,
+      code: err.code,
+      path: err.path
+      // Don't include full stack trace in response
+    }
   });
 };
 
@@ -26,13 +51,16 @@ const sendErrorDev = (err, res) => {
 const sendErrorProd = (err, res) => {
   // Operational, trusted error: send message to client
   if (err.isOperational) {
+    // Sanitize error message before sending to client
+    const safeMessage = sanitizeErrorMessage(err.message);
+    
     res.status(err.statusCode).json({
       status: err.status,
-      message: err.message
+      message: safeMessage
     });
   } else {
     // Programming or other unknown error: don't leak error details
-    console.error('ERROR 💥', err);
+    console.error('ERROR:', err);
     res.status(500).json({
       status: 'error',
       message: 'Something went wrong'
@@ -70,9 +98,11 @@ module.exports = (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || 'error';
 
+  // In both development and production, use appropriate error handling
+  // but never expose full stack traces to clients
   if (process.env.NODE_ENV === 'development') {
     sendErrorDev(err, res);
-  } else if (process.env.NODE_ENV === 'production') {
+  } else {
     let error = { ...err };
     error.message = err.message;
 
