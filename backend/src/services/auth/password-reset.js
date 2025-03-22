@@ -86,6 +86,9 @@ const resetPassword = async (token, newPassword) => {
     user.passwordResetAttempts = 0;
     user.passwordResetAttemptsLockUntil = undefined;
     
+    // Invalidate all existing tokens
+    await user.invalidateAllTokens();
+    
     // Save changes
     await user.save();
     

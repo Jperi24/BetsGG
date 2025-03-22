@@ -380,14 +380,12 @@ const verifyTwoFactorToken = async (userId, token, isRecoveryCode = false) => {
   // Clean the token
   const cleanToken = token.replace(/\s+/g, '');
   
-  // IMPORTANT: Use a smaller window (1) to prevent replay attacks
-  // A window of 1 allows the token from the previous 30-second period to be valid
-  // This is usually sufficient to account for clock skew while remaining secure
+  // Improved verification with smaller window
   const verified = speakeasy.totp.verify({
     secret: user.twoFactorSecret,
     encoding: 'base32',
     token: cleanToken,
-    window: 1 // Reduced from previous value of 4-6
+    window: 1 // Reduced window size to improve security
   });
   
   // Add anti-replay protection by storing used tokens with a short TTL
@@ -397,6 +395,7 @@ const verifyTwoFactorToken = async (userId, token, isRecoveryCode = false) => {
     
     if (exists) {
       // Token has been used before - reject it
+      console.log(`2FA token reuse attempt detected for user ${userId}`);
       return false;
     }
     

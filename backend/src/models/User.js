@@ -131,7 +131,8 @@ userSchema.methods.generateTempJWT = function() {
     { 
       id: this._id,
       email: this.email,
-      pending2FA: true
+      pending2FA: true,
+      tokenVersion: this.tokenVersion
     },
     process.env.JWT_SECRET,
     { expiresIn: '5m' } // Short expiration for security

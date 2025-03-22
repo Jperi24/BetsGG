@@ -32,7 +32,7 @@ const updateUserProfile = async (userId, updateData, currentPassword) => {
       throw new AppError('Current password is incorrect', 401);
     }
     
-    // Check if email is being updated
+    // Check for email change
     const isEmailChange = updateData.email && updateData.email !== user.email;
     
     // Update user
@@ -45,6 +45,8 @@ const updateUserProfile = async (userId, updateData, currentPassword) => {
     // If email changed, invalidate tokens and sessions
     if (isEmailChange) {
       await user.invalidateAllTokens();
+      
+      // Also invalidate all sessions
       await sessionService.invalidateAllUserSessions(userId);
     }
     
