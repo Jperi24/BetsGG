@@ -42,6 +42,12 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
   return handleApiResponse(response);
 };
 
+export const logout = async (credentials: LoginCredentials): Promise<AuthResponse> => {
+  const response = await apiClient.post('/auth/logout', credentials);
+  console.log("Response Login:",response)
+  return handleApiResponse(response);
+};
+
 // Verify 2FA during login
 export const verify2FALogin = async (
   token: string, 

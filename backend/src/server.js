@@ -4,7 +4,7 @@ const seedDatabase = require('./utils/seed-data');
 const tournamentService = require('./services/tournament');
 const cleanupExpiredTournaments = require('./services/tournament/cleanup')
 const betUpdateService = require('./services/betting/update-service');
-const { client: redisClient } = require('./utils/redis');
+const { client: redisClient, client } = require('./utils/redis');
 
 // Flag to determine if we should seed the database
 const shouldSeedDatabase = process.env.SEED_DATABASE === 'true';
@@ -52,6 +52,8 @@ async function startServer() {
     
     // Setup scheduled updates for bet statuses
     betUpdateService.setupScheduledUpdates(10); // Check every 10 minutes
+
+    
 
  
     
