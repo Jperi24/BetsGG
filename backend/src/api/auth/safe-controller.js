@@ -11,8 +11,7 @@ const { v4: uuidv4 } = require('uuid');
 
 // Helper function to create and send token
 // src/api/auth/controller.js - Update createSendToken function
-
-const createSendToken = async (user, statusCode, req, res, options = {}) => {
+const createSendToken = async (user, statusCode, res, options = {}, deviceInfo = {}) => {
   try {
     // Generate token based on 2FA status
     const token = options.temp2FA 
@@ -22,36 +21,24 @@ const createSendToken = async (user, statusCode, req, res, options = {}) => {
     // Create session with error handling
     let sessionId;
     try {
-      // Extract device info from request
-      sessionId = await sessionService.createSession(user.id, req);
+      sessionId = await sessionService.createSession(user.id, deviceInfo);
     } catch (sessionError) {
       console.error('Error creating session:', sessionError);
       // Generate a fallback session ID to avoid breaking the login flow
       sessionId = uuidv4();
     }
     
-    // Generate CSRF token for protection against CSRF attacks
-    const csrfToken = await cookieAuth.generateCsrfToken(user.id);
-    
-    // Set cookies: auth token (HTTP-only), session ID, and CSRF token
-    cookieAuth.setTokenCookie(res, token, {
-      tempToken: options.temp2FA,
-      sessionId
-    });
-    cookieAuth.setCsrfCookie(res, csrfToken);
-    
     // Remove sensitive fields from output
     user.password = undefined;
     user.twoFactorSecret = undefined;
     user.twoFactorRecoveryCodes = undefined;
     
-    // Return response with user data and auth details
     res.status(statusCode).json({
       status: 'success',
-      csrfToken,
+      token,
       sessionId,
       requires2FA: user.twoFactorEnabled && options.temp2FA,
-      tempToken: options.temp2FA ? token : undefined,
+      tempToken: options.temp2FA ? user.id : undefined,
       data: {
         user
       }
@@ -66,6 +53,39 @@ const createSendToken = async (user, statusCode, req, res, options = {}) => {
 };
 
 // Register a new user
+// exports.register = async (req, res, next) => {
+//   try {
+//     const { email, username, password } = req.body;
+    
+//     // Check if user already exists
+//     const existingUser = await User.findOne({ 
+//       $or: [{ email }, { username }] 
+//     });
+    
+//     if (existingUser) {
+//       return res.status(400).json({
+//         status: 'fail',
+//         message: 'Email or username already in use'
+//       });
+//     }
+    
+//     // Create new user
+//     const newUser = await User.create({
+//       email,
+//       username,
+//       password
+//     });
+    
+//     // Generate JWT and send response
+//     createSendToken(newUser, 201, res);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+// Update to src/api/auth/controller.js - Add welcome notification
+
+// Add this to the register function
 exports.register = async (req, res, next) => {
   try {
     const { email, username, password } = req.body;
@@ -92,8 +112,104 @@ exports.register = async (req, res, next) => {
     // Send welcome notification
     await notificationService.sendWelcomeNotification(newUser._id, username);
     
-    // Generate JWT and send response with HTTP-only cookie
-    await createSendToken(newUser, 201, req, res);
+    // Generate JWT and send response
+    createSendToken(newUser, 201, res);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update the verifyAndEnableTwoFactor function to add notification
+exports.verifyAndEnableTwoFactor = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { code } = req.body;
+    
+    // Try to verify the token
+    await twoFactorService.verifyAndEnableTwoFactor(userId, code);
+    
+    // Get user with recovery codes
+    const user = await User.findById(userId).select('+twoFactorRecoveryCodes');
+    
+    // Invalidate all existing tokens
+    await user.invalidateAllTokens();
+    
+    // Invalidate all sessions except current
+    const currentSessionId = req.headers['x-session-id'];
+    await sessionService.invalidateAllUserSessions(userId, [currentSessionId]);
+    
+    // Send 2FA enabled notification
+    await notificationService.send2FAEnabledNotification(userId);
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Two-factor authentication has been enabled successfully',
+      data: {
+        recoveryCodes: user.twoFactorRecoveryCodes
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update the disableTwoFactor function to add notification
+exports.disableTwoFactor = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    
+    // Disable 2FA
+    await twoFactorService.disableTwoFactor(userId);
+    
+    // Get user
+    const user = await User.findById(userId);
+    
+    // Invalidate all existing tokens
+    await user.invalidateAllTokens();
+    
+    // Invalidate all sessions except current
+    const currentSessionId = req.headers['x-session-id'];
+    await sessionService.invalidateAllUserSessions(userId, [currentSessionId]);
+    
+    // Send 2FA disabled notification
+    await notificationService.send2FADisabledNotification(userId);
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Two-factor authentication has been disabled'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Link wallet address to user
+exports.linkWallet = async (req, res, next) => {
+  try {
+    const { walletAddress } = req.body;
+    
+    // Check if wallet address is already linked to another user
+    const existingUser = await User.findOne({ walletAddress });
+    if (existingUser && existingUser.id !== req.user.id) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Wallet address already linked to another account'
+      });
+    }
+    
+    // Update user with wallet address
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      { walletAddress },
+      { new: true, runValidators: true }
+    );
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        user: updatedUser
+      }
+    });
   } catch (error) {
     next(error);
   }
@@ -154,10 +270,10 @@ exports.login = async (req, res, next) => {
     
     // If 2FA is enabled, send temporary token
     if (user.twoFactorEnabled) {
-      await createSendToken(user, 200, req, res, { temp2FA: true });
+      createSendToken(user, 200, res, { temp2FA: true });
     } else {
       // If 2FA is not enabled, generate JWT and send response
-      await createSendToken(user, 200, req, res);
+      createSendToken(user, 200, res);
     }
   } catch (error) {
     console.error('Login Error:', error);
@@ -165,22 +281,18 @@ exports.login = async (req, res, next) => {
   }
 };
 
-// Improved logout with session invalidation
 exports.logout = async (req, res, next) => {
   try {
-    // Get session ID from cookie
-    const sessionId = req.cookies.session_id;
+    const userId = req.user.id;
+    const sessionId = req.headers['x-session-id'];
     
     // If sessionId is provided, invalidate just that session
     if (sessionId) {
       await sessionService.invalidateSession(sessionId);
-    } else if (req.user) {
+    } else {
       // Otherwise invalidate all sessions for this user
-      await sessionService.invalidateAllUserSessions(req.user.id);
+      await sessionService.invalidateAllUserSessions(userId);
     }
-    
-    // Clear auth cookies
-    cookieAuth.clearAuthCookies(res);
     
     res.status(200).json({
       status: 'success',
@@ -203,20 +315,8 @@ exports.verifyTwoFactor = async (req, res, next) => {
       });
     }
     
-    // Extract user ID from JWT token
-    let userId;
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      userId = decoded.id;
-    } catch (error) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'Invalid or expired verification token'
-      });
-    }
-    
     // Verify the token - handle both regular codes and recovery codes
-    const isValid = await twoFactorService.verifyTwoFactorToken(userId, code, isRecoveryCode);
+    const isValid = await twoFactorService.verifyTwoFactorToken(token, code, isRecoveryCode);
     
     if (!isValid) {
       return res.status(401).json({
@@ -226,10 +326,10 @@ exports.verifyTwoFactor = async (req, res, next) => {
     }
     
     // Get the user
-    const user = await User.findById(userId);
+    const user = await User.findById(token);
     
-    // Generate full JWT and send response with HTTP-only cookie
-    await createSendToken(user, 200, req, res);
+    // Generate full JWT and send response
+    createSendToken(user, 200, res);
   } catch (error) {
     next(error);
   }
@@ -238,16 +338,9 @@ exports.verifyTwoFactor = async (req, res, next) => {
 // Get current user profile
 exports.getMe = async (req, res, next) => {
   try {
-    // Generate a fresh CSRF token
-    const csrfToken = await cookieAuth.generateCsrfToken(req.user.id);
-    
-    // Set the CSRF cookie
-    cookieAuth.setCsrfCookie(res, csrfToken);
-    
     // User is already available in req.user from auth middleware
     res.status(200).json({
       status: 'success',
-      csrfToken,
       data: {
         user: req.user
       }
@@ -258,6 +351,7 @@ exports.getMe = async (req, res, next) => {
 };
 
 // Update password
+// src/api/auth/controller.js - in updatePassword function
 exports.updatePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -281,14 +375,14 @@ exports.updatePassword = async (req, res, next) => {
     await user.invalidateAllTokens();
     
     // Invalidate all sessions except current one
-    const currentSessionId = req.cookies.session_id;
+    const currentSessionId = req.headers['x-session-id'];
     await sessionService.invalidateAllUserSessions(user.id, [currentSessionId]);
     
-    // Send notification
+    // Create new token and send notification
     await notificationService.sendPasswordChangedNotification(user.id);
     
-    // Generate new token and send with HTTP-only cookie
-    await createSendToken(user, 200, req, res);
+    // Generate new token
+    await createSendToken(user, 200, res);
   } catch (error) {
     next(error);
   }
@@ -334,10 +428,12 @@ exports.forgotPassword = async (req, res, next) => {
 };
 
 // Reset password
+// src/api/auth/controller.js - in resetPassword function
 exports.resetPassword = async (req, res, next) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
+
     
     // Reset password
     const user = await passwordResetService.resetPassword(token, password);
@@ -351,16 +447,19 @@ exports.resetPassword = async (req, res, next) => {
     // Send notification
     await notificationService.sendPasswordChangedNotification(user.id);
     
-    // Log the user in with new token and HTTP-only cookie
-    await createSendToken(user, 200, req, res);
+    // Log the user in with new token
+    await createSendToken(user, 200, res);
   } catch (error) {
     next(error);
   }
 };
 
-// Other 2FA-related methods remain largely unchanged...
+/**
+ * Get user's 2FA status
+ */
 exports.getTwoFactorStatus = async (req, res, next) => {
   try {
+    // User is already available from auth middleware
     res.status(200).json({
       status: 'success',
       data: {
@@ -372,11 +471,15 @@ exports.getTwoFactorStatus = async (req, res, next) => {
   }
 };
 
+/**
+ * Setup 2FA for a user
+ */
 exports.setupTwoFactor = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const email = req.user.email;
     
+    // Generate TOTP secret and QR code
     const { secret, qrCodeUrl, recoveryCodes } = await twoFactorService.generateTotpSecret(userId, email);
     
     res.status(200).json({
@@ -388,169 +491,86 @@ exports.setupTwoFactor = async (req, res, next) => {
       }
     });
   } catch (error) {
+    console.error('2FA Setup Error:', error);
     next(error);
   }
 };
 
-exports.verifyAndEnableTwoFactor = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const { code } = req.body;
-    
-    await twoFactorService.verifyAndEnableTwoFactor(userId, code);
-    
-    // Get user with recovery codes
-    const user = await User.findById(userId).select('+twoFactorRecoveryCodes');
-    
-    // Invalidate all existing tokens
-    await user.invalidateAllTokens();
-    
-    // Invalidate all sessions except current
-    const currentSessionId = req.cookies.session_id;
-    await sessionService.invalidateAllUserSessions(userId, [currentSessionId]);
-    
-    // Generate new auth token and CSRF token
-    const token = user.generateJWT();
-    const csrfToken = await cookieAuth.generateCsrfToken(userId);
-    
-    // Set new cookies
-    cookieAuth.setTokenCookie(res, token, { sessionId: currentSessionId });
-    cookieAuth.setCsrfCookie(res, csrfToken);
-    
-    // Send 2FA enabled notification
-    await notificationService.send2FAEnabledNotification(userId);
-    
-    res.status(200).json({
-      status: 'success',
-      message: 'Two-factor authentication has been enabled successfully',
-      csrfToken,
-      data: {
-        recoveryCodes: user.twoFactorRecoveryCodes
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+/**
+ * Verify and enable 2FA
+ */
 
-exports.disableTwoFactor = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
+// exports.verifyAndEnableTwoFactor = async (req, res, next) => {
+//   try {
+//     const userId = req.user.id;
+//     const { code } = req.body;
     
-    // Disable 2FA
-    await twoFactorService.disableTwoFactor(userId);
+//     console.log(`2FA verification request received for user ${userId}`);
+//     console.log(`Verification code provided: ${code}`);
     
-    // Get user
-    const user = await User.findById(userId);
+//     if (!code) {
+//       console.log('No verification code provided');
+//       return res.status(400).json({
+//         status: 'fail',
+//         message: 'Verification code is required'
+//       });
+//     }
     
-    // Invalidate all existing tokens
-    await user.invalidateAllTokens();
+//     // Try to verify the token
+//     try {
+//       await twoFactorService.verifyAndEnableTwoFactor(userId, code);
+//       console.log(`2FA verification successful for user ${userId}`);
+      
+//       // Get user with recovery codes to return them
+//       const user = await User.findById(userId).select('+twoFactorRecoveryCodes');
+      
+//       res.status(200).json({
+//         status: 'success',
+//         message: 'Two-factor authentication has been enabled successfully',
+//         data: {
+//           recoveryCodes: user.twoFactorRecoveryCodes
+//         }
+//       });
+//     } catch (validationError) {
+//       console.error(`2FA verification failed for user ${userId}:`, validationError);
+      
+//       // Check if there are specific details we can provide to help troubleshooting
+//       let errorMessage = validationError.message || 'Failed to verify code. Please try again.';
+      
+//       return res.status(validationError.statusCode || 400).json({
+//         status: 'fail',
+//         message: errorMessage,
+//         debug: process.env.NODE_ENV === 'development' ? {
+//           providedCode: code,
+//           error: validationError.message
+//         } : undefined
+//       });
+//     }
+//   } catch (error) {
+//     console.error('2FA Verification Error:', error);
+//     next(error);
+//   }
+// };
+
+/**
+ * Disable 2FA for a user
+ */
+// exports.disableTwoFactor = async (req, res, next) => {
+//   try {
+//     const userId = req.user.id;
     
-    // Invalidate all sessions except current
-    const currentSessionId = req.cookies.session_id;
-    await sessionService.invalidateAllUserSessions(userId, [currentSessionId]);
+//     // Disable 2FA
+//     await twoFactorService.disableTwoFactor(userId);
     
-    // Generate new auth token and CSRF token
-    const token = user.generateJWT();
-    const csrfToken = await cookieAuth.generateCsrfToken(userId);
-    
-    // Set new cookies
-    cookieAuth.setTokenCookie(res, token, { sessionId: currentSessionId });
-    cookieAuth.setCsrfCookie(res, csrfToken);
-    
-    // Send 2FA disabled notification
-    await notificationService.send2FADisabledNotification(userId);
-    
-    res.status(200).json({
-      status: 'success',
-      message: 'Two-factor authentication has been disabled',
-      csrfToken
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-///////////////////////////////////
-
-
-
-
-
-
-// Link wallet address to user
-exports.linkWallet = async (req, res, next) => {
-  try {
-    const { walletAddress } = req.body;
-    
-    // Check if wallet address is already linked to another user
-    const existingUser = await User.findOne({ walletAddress });
-    if (existingUser && existingUser.id !== req.user.id) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Wallet address already linked to another account'
-      });
-    }
-    
-    // Update user with wallet address
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user.id,
-      { walletAddress },
-      { new: true, runValidators: true }
-    );
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        user: updatedUser
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-
-
-
-// Verify 2FA token
-exports.verifyTwoFactor = async (req, res, next) => {
-  try {
-    const { token, code, isRecoveryCode } = req.body;
-    
-    if (!token || !code) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Verification token and code are required'
-      });
-    }
-    
-    // Verify the token - handle both regular codes and recovery codes
-    const isValid = await twoFactorService.verifyTwoFactorToken(token, code, isRecoveryCode);
-    
-    if (!isValid) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'Invalid verification code'
-      });
-    }
-    
-    // Get the user
-    const user = await User.findById(token);
-    
-    // Generate full JWT and send response
-    createSendToken(user, 200, res);
-  } catch (error) {
-    next(error);
-  }
-};
-
-
-
-
-
-
-
-
+//     res.status(200).json({
+//       status: 'success',
+//       message: 'Two-factor authentication has been disabled'
+//     });
+//   } catch (error) {
+//     console.error('2FA Disable Error:', error);
+//     next(error);
+//   }
+// };
 
 /**
  * Get recovery codes

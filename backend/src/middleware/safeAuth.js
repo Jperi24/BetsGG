@@ -1,19 +1,23 @@
-// src/middleware/auth.js - Updated for cookie-based auth
+// src/middleware/auth.js (Updated)
 const jwt = require('jsonwebtoken');
 const { promisify } = require('util');
 const User = require('../models/User');
 const { AppError } = require('./error');
-const sessionService = require('../services/auth/session');
-const notificationService = require('../services/notification');
 
 /**
  * Protect routes - Authentication middleware
- * Verifies JWT token from HTTP-only cookie and adds user to request
+ * Verifies JWT token and adds user to request
  */
 exports.protect = async (req, res, next) => {
   try {
-    // 1) Get token from cookies
-    const token = req.cookies.auth_token;
+    // 1) Get token and check if it exists
+    let token;
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith('Bearer')
+    ) {
+      token = req.headers.authorization.split(' ')[1];
+    }
 
     if (!token) {
       return res.status(401).json({
@@ -26,6 +30,7 @@ exports.protect = async (req, res, next) => {
     const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
 
     // 3) Check if user still exists
+   
     const currentUser = await User.findById(decoded.id);
     
     if (!currentUser) {
@@ -52,26 +57,6 @@ exports.protect = async (req, res, next) => {
           message: 'Two-factor authentication required. Please verify your identity.'
         });
       }
-    }
-
-    // 5) Check if session is valid (if using sessions)
-    const sessionId = req.cookies.session_id;
-    if (sessionId) {
-      const session = await sessionService.getSession(sessionId);
-      if (!session || session.userId !== currentUser.id.toString()) {
-        // Invalid session, clear cookies
-        res.clearCookie('auth_token');
-        res.clearCookie('session_id');
-        res.clearCookie('csrf_token');
-        
-        return res.status(401).json({
-          status: 'fail',
-          message: 'Your session has expired. Please log in again.'
-        });
-      }
-      
-      // Attach session to request for potential use in controllers
-      req.session = session;
     }
 
     // GRANT ACCESS TO PROTECTED ROUTE
@@ -127,19 +112,10 @@ exports.require2FAVerified = async (req, res, next) => {
       return next();
     }
     
-    // Get token from cookie
-    const token = req.cookies.auth_token;
-    if (!token) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'Authentication required'
-      });
-    }
-    
-    // Verify token
+    // If 2FA is enabled, check if the token is a full token (not a temporary one)
+    const token = req.headers.authorization.split(' ')[1];
     const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
     
-    // Check if it's a temporary token
     if (decoded.pending2FA) {
       return res.status(401).json({
         status: 'fail',

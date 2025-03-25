@@ -1,14 +1,13 @@
-// src/app.js - Updated with enhanced security middleware
+// src/app.js
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const cookieParser = require('cookie-parser'); // Add this dependency
-const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
+const compression = require('compression');
 const hpp = require('hpp');
 const mongoose = require('mongoose');
-const { csrfProtection } = require('./middleware/cookie-auth'); // Import our CSRF protection
 require('dotenv').config();
 
 // Import routes
@@ -21,7 +20,6 @@ const notificationsRoutes = require('./api/notifications/routes');
 
 // Import error handling middleware
 const errorHandler = require('./middleware/error');
-const { standardLimiter, authLimiter, financialLimiter } = require('./middleware/rate-limit');
 
 // Create Express app
 const app = express();
@@ -29,41 +27,39 @@ const app = express();
 // Set security HTTP headers
 app.use(helmet());
 
-// Enable CORS with credentials support
+// Enable CORS
 const allowedOrigins = process.env.NODE_ENV === 'production'
   ? [process.env.FRONTEND_URL]
   : ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
-const corsOptions = {
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, etc)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Session-ID'],
-  credentials: true,
-  optionsSuccessStatus: 200,
-  maxAge: 86400 // Cache preflight requests for 24 hours
-};
+  const corsOptions = {
+    origin: process.env.NODE_ENV === 'production' 
+      ? [process.env.FRONTEND_URL]
+      : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+    optionsSuccessStatus: 200,
+  };
+  
+  app.use(cors(corsOptions));
 
-app.use(cors(corsOptions));
 
-// Apply rate limiters
+const { 
+  standardLimiter, 
+  authLimiter, 
+  financialLimiter, 
+  bettingLimiter 
+} = require('./middleware/rate-limit');
 app.use('/api', standardLimiter);
+
+
+
+// Apply auth rate limiter to login and register routes
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 app.use('/api/auth/reset-password', authLimiter);
-app.use('/api/wallet', financialLimiter);
-
-// Cookie parser middleware - required for auth cookies
-app.use(cookieParser());
 
 // Body parser, reading data from body into req.body
 app.use(express.json({ limit: '10kb' }));
@@ -86,9 +82,6 @@ app.use(hpp({
 // Compression middleware
 app.use(compression());
 
-// CSRF protection for all state-changing requests
-app.use(csrfProtection);
-
 // Trust proxy (needed if behind a reverse proxy like Nginx or if using a PaaS like Heroku)
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
@@ -101,26 +94,6 @@ if (process.env.NODE_ENV === 'development') {
     next();
   });
 }
-
-// Add security headers to all responses
-app.use((req, res, next) => {
-  // Strict Transport Security
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
-  
-  // Content Security Policy - customize based on your needs
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com;");
-  
-  // No referrer when navigating to another origin
-  res.setHeader('Referrer-Policy', 'same-origin');
-  
-  // Prevent clickjacking
-  res.setHeader('X-Frame-Options', 'DENY');
-  
-  // Prevent MIME type sniffing
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  
-  next();
-});
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -202,4 +175,4 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-module.exports = { app, connectDB };;
+module.exports = { app, connectDB };

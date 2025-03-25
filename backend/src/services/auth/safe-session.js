@@ -1,10 +1,7 @@
-// src/services/auth/session.js - Enhanced with cookie support
 const { v4: uuidv4 } = require('uuid');
 const redis = require('../../utils/redis');
-const UAParser = require('ua-parser-js'); 
+const UAParser = require('ua-parser-js'); // Add this dependency
 const { AppError } = require('../../middleware/error');
-const notificationService = require('../notification');
-const crypto = require('crypto');
 
 /**
  * Parse and sanitize device info from request
@@ -52,6 +49,7 @@ const parseDeviceInfo = (req) => {
  * @returns {string} - Hashed device fingerprint
  */
 const generateDeviceFingerprint = (deviceInfo) => {
+  const crypto = require('crypto');
   const fingerprintData = `${deviceInfo.browser.name}|${deviceInfo.browser.version}|${deviceInfo.os.name}|${deviceInfo.os.version}|${deviceInfo.device.vendor}|${deviceInfo.device.model}`;
   return crypto.createHash('sha256').update(fingerprintData).digest('hex');
 };
@@ -80,15 +78,13 @@ const createSession = async (userId, req) => {
     await redis.setAsync(`session:${sessionId}`, JSON.stringify(session), 'EX', 2592000);
     
     // Also store a reference to this session in a user's session list
-    await redis.client.sadd(`user:sessions:${userId}`, sessionId);
+    await redis.saddAsync(`user:sessions:${userId}`, sessionId);
     
     // Check if this is a new device
     const isNewDevice = await checkIfNewDevice(userId, deviceFingerprint);
     if (isNewDevice) {
       // Trigger new device notification (async, don't await)
-      notifyNewDevice(userId, deviceInfo).catch(err => {
-        console.error('Error sending new device notification:', err);
-      });
+      notifyNewDevice(userId, deviceInfo);
     }
     
     return sessionId;
@@ -108,11 +104,11 @@ const createSession = async (userId, req) => {
 const checkIfNewDevice = async (userId, deviceFingerprint) => {
   try {
     const deviceKey = `user:devices:${userId}`;
-    const isNewDevice = !(await redis.client.sismember(deviceKey, deviceFingerprint));
+    const isNewDevice = !(await redis.sismemberAsync(deviceKey, deviceFingerprint));
     
     if (isNewDevice) {
       // Add to known devices
-      await redis.client.sadd(deviceKey, deviceFingerprint);
+      await redis.saddAsync(deviceKey, deviceFingerprint);
     }
     
     return isNewDevice;
@@ -129,6 +125,9 @@ const checkIfNewDevice = async (userId, deviceFingerprint) => {
  */
 const notifyNewDevice = async (userId, deviceInfo) => {
   try {
+    // Import notification service
+    const notificationService = require('../notification');
+    
     // Format device info for display
     const deviceDescription = `${deviceInfo.browser.name} ${deviceInfo.browser.version} on ${deviceInfo.os.name} ${deviceInfo.os.version}`;
     
@@ -170,7 +169,7 @@ const getSession = async (sessionId) => {
 const getUserSessions = async (userId) => {
   try {
     // Get all session IDs for user
-    const sessionIds = await redis.client.smembers(`user:sessions:${userId}`);
+    const sessionIds = await redis.smembersAsync(`user:sessions:${userId}`);
     if (!sessionIds || sessionIds.length === 0) return [];
     
     // Get session data for each ID
@@ -214,7 +213,7 @@ const invalidateSession = async (sessionId) => {
       
       // Remove from user's session set
       if (session.userId) {
-        await redis.client.srem(`user:sessions:${session.userId}`, sessionId);
+        await redis.sremAsync(`user:sessions:${session.userId}`, sessionId);
       }
     }
     
@@ -239,7 +238,7 @@ const invalidateAllUserSessions = async (userId, excludeSessionIds = []) => {
     const excludeSet = new Set(excludeSessionIds);
     
     // Get all session IDs for the user
-    const sessionIds = await redis.client.smembers(`user:sessions:${userId}`);
+    const sessionIds = await redis.smembersAsync(`user:sessions:${userId}`);
     if (!sessionIds || sessionIds.length === 0) return true;
     
     // Split sessions into batches to avoid blocking Redis
@@ -265,13 +264,11 @@ const invalidateAllUserSessions = async (userId, excludeSessionIds = []) => {
     // Update user's session set to only contain excluded IDs
     if (excludeSessionIds.length > 0) {
       // Delete entire set then add back excluded sessions
-      await redis.client.del(`user:sessions:${userId}`);
-      if (excludeSessionIds.length > 0) {
-        await redis.client.sadd(`user:sessions:${userId}`, ...excludeSessionIds);
-      }
+      await redis.delAsync(`user:sessions:${userId}`);
+      await redis.saddAsync(`user:sessions:${userId}`, ...excludeSessionIds);
     } else {
       // Delete the entire set
-      await redis.client.del(`user:sessions:${userId}`);
+      await redis.delAsync(`user:sessions:${userId}`);
     }
     
     return true;
@@ -296,13 +293,13 @@ const cleanupExpiredSessions = async () => {
     
     do {
       // Scan for session keys in batches
-      const [nextCursor, keys] = await redis.client.scan(cursor, 'MATCH', 'session:*', 'COUNT', 100);
+      const [nextCursor, keys] = await redis.scanAsync(cursor, 'MATCH', 'session:*', 'COUNT', 100);
       cursor = nextCursor;
       totalProcessed += keys.length;
       
       // Check each key for existence (if it's expired, it won't exist)
       for (const key of keys) {
-        const exists = await redis.client.exists(key);
+        const exists = await redis.existsAsync(key);
         
         if (!exists) {
           totalRemoved++;
@@ -311,12 +308,12 @@ const cleanupExpiredSessions = async () => {
           
           // Find which user this belonged to and remove from their set
           // This is inefficient but necessary for cleanup
-          const userKeys = await redis.client.keys('user:sessions:*');
+          const userKeys = await redis.keysAsync('user:sessions:*');
           
           for (const userKey of userKeys) {
-            const isMember = await redis.client.sismember(userKey, sessionId);
+            const isMember = await redis.sismemberAsync(userKey, sessionId);
             if (isMember) {
-              await redis.client.srem(userKey, sessionId);
+              await redis.sremAsync(userKey, sessionId);
               console.log(`Removed expired session ${sessionId} from ${userKey}`);
               break;
             }
@@ -333,41 +330,41 @@ const cleanupExpiredSessions = async () => {
   }
 };
 
-/**
- * Add a session API route to list and manage active sessions
- * @param {string} userId - User ID
- * @param {string} currentSessionId - Current session ID
- * @returns {Array} - Array of formatted session objects for display
- */
-const getUserSessionsForDisplay = async (userId, currentSessionId) => {
-  try {
-    const sessions = await getUserSessions(userId);
-    
-    return sessions.map(session => ({
-      id: session.id,
-      deviceInfo: {
-        browser: `${session.deviceInfo.browser.name} ${session.deviceInfo.browser.version}`,
-        os: `${session.deviceInfo.os.name} ${session.deviceInfo.os.version}`,
-        device: session.deviceInfo.device.type !== 'Unknown' 
-          ? `${session.deviceInfo.device.vendor} ${session.deviceInfo.device.model}` 
-          : 'Desktop/Laptop'
-      },
-      ipAddress: session.deviceInfo.ip,
-      isCurrent: session.id === currentSessionId,
-      lastActive: session.lastActive,
-      createdAt: session.createdAt
-    }));
-  } catch (error) {
-    console.error('Error getting user sessions for display:', error);
-    throw new AppError('Failed to retrieve sessions', 500);
-  }
+// Add these functions to redis.js or create a helper
+redis.scanAsync = async (cursor, command, pattern, count, size) => {
+  return redis.client.scan(cursor, command, pattern, count, size);
+};
+
+redis.saddAsync = async (key, ...members) => {
+  return redis.client.sadd(key, ...members);
+};
+
+redis.sismemberAsync = async (key, member) => {
+  return redis.client.sismember(key, member);
+};
+
+redis.smembersAsync = async (key) => {
+  return redis.client.smembers(key);
+};
+
+redis.sremAsync = async (key, ...members) => {
+  return redis.client.srem(key, ...members);
+};
+
+redis.existsAsync = async (key) => {
+  return redis.client.exists(key);
+};
+
+redis.keysAsync = async (pattern) => {
+  // Warning: keys is not recommended for production use
+  // Consider implementing with scan instead
+  return redis.client.keys(pattern);
 };
 
 module.exports = {
   createSession,
   getSession,
   getUserSessions,
-  getUserSessionsForDisplay,
   invalidateSession,
   invalidateAllUserSessions,
   cleanupExpiredSessions

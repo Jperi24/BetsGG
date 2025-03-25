@@ -1,11 +1,9 @@
-// src/api/auth/routes.js - Updated with security endpoints
+// src/api/auth/routes.js (Updated)
 const express = require('express');
 const router = express.Router();
 const authController = require('./controller');
-const securityController = require('./security-controller');
-const sessionController = require('./session-controller');
-const { protect, require2FAVerified } = require('../../middleware/auth');
-const { validateRegister, validateLogin, validatePassword, validateWallet, validateRequest, validateUpdatePassword } = require('../../middleware/validation');
+const { protect } = require('../../middleware/auth');
+const { validateRegister, validateLogin, validatePassword, validateWallet, validateRequest,validateUpdatePassword } = require('../../middleware/validation');
 const { body } = require('express-validator');
 
 // Public routes
@@ -23,8 +21,7 @@ router.post('/verify-2fa',
       .withMessage('Verification code is required'),
     body('isRecoveryCode')
       .optional()
-      .isBoolean(),
-    validateRequest
+      .isBoolean()
   ],
   authController.verifyTwoFactor
 );
@@ -34,8 +31,7 @@ router.post('/forgot-password',
       .isEmail()
       .withMessage('Please provide a valid email address')
       .normalizeEmail()
-      .trim(),
-    validateRequest
+      .trim()
   ],
   authController.forgotPassword
 );
@@ -43,44 +39,29 @@ router.post('/reset-password/:token', validatePassword, authController.resetPass
 
 // Protected routes (require authentication)
 router.use(protect); // All routes after this middleware require authentication
-
-// Auth status and CSRF token endpoints
-router.get('/status', securityController.verifyAuthStatus);
-router.get('/csrf-token', securityController.refreshCsrfToken);
-
-// User information
 router.get('/me', authController.getMe);
 
-// Password management
-router.patch('/update-password', validateUpdatePassword, authController.updatePassword);
-
-// Wallet management
+router.patch('/update-password', protect, validateUpdatePassword, authController.updatePassword);
 router.post('/link-wallet', validateWallet, authController.linkWallet);
+router.post('/logout', protect, authController.logout);
 
-// Session management
-router.get('/sessions', sessionController.getActiveSessions);
-router.delete('/sessions/:sessionId', require2FAVerified, sessionController.terminateSession);
-router.delete('/sessions', require2FAVerified, sessionController.terminateAllOtherSessions);
-
-// Logout
-router.post('/logout', authController.logout);
-
-// 2FA management
+// 2FA routes
 router.get('/2fa/status', authController.getTwoFactorStatus);
 router.post('/2fa/setup', authController.setupTwoFactor);
 router.post('/2fa/verify', authController.verifyAndEnableTwoFactor);
-router.post('/2fa/disable', require2FAVerified, authController.disableTwoFactor);
-router.get('/2fa/recovery-codes', require2FAVerified, authController.getRecoveryCodes);
+router.post('/2fa/disable', authController.disableTwoFactor);
+router.get('/2fa/recovery-codes', authController.getRecoveryCodes);
 router.post('/2fa/recovery-codes',
   [
     body('password')
       .isString()
       .notEmpty()
-      .withMessage('Current password is required'),
-    validateRequest
+      .withMessage('Current password is required')
   ],
-  require2FAVerified,
   authController.regenerateRecoveryCodes
 );
+
+
+
 
 module.exports = router;
