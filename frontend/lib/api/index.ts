@@ -26,7 +26,7 @@ export const handleApiResponse = (response: any) => {
   throw new Error(response.data?.message || 'Invalid response format');
 };
 
-// Improved CSRF token retrieval with proper error handling
+// Secure CSRF token handling
 const getCsrfToken = (): string => {
   if (typeof document === 'undefined') return '';
   
@@ -37,16 +37,16 @@ const getCsrfToken = (): string => {
     if (token) return token;
   }
   
-  // Get from the dedicated CSRF cookie
-  const cookies = document.cookie.split(';')
-    .map(cookie => cookie.trim())
-    .reduce((acc: Record<string, string>, cookie) => {
-      const [key, value] = cookie.split('=');
-      if (key && value) acc[key] = value;
-      return acc;
-    }, {});
+  // Get from the CSRF cookie set by the server (typically 'XSRF-TOKEN')
+  const cookieValue = document.cookie
+    .split('; ')
+    .find(row => row.startsWith('XSRF-TOKEN='));
+    
+  if (cookieValue) {
+    return decodeURIComponent(cookieValue.split('=')[1]);
+  }
   
-  return cookies['XSRF-TOKEN'] || '';
+  return '';
 };
 
 // Create secure axios instance with proper CSRF handling
@@ -56,7 +56,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  withCredentials: true // Ensures cookies are sent with requests
+  withCredentials: true // Essential for sending/receiving cookies
 });
 
 // Enhanced request interceptor with robust CSRF protection
@@ -66,72 +66,88 @@ apiClient.interceptors.request.use(
     if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
       const token = getCsrfToken();
       if (token) {
-        config.headers['X-XSRF-TOKEN'] = token; // Standard CSRF header
+        config.headers['X-CSRF-TOKEN'] = token; // Standard header for CSRF
       } else if (process.env.NODE_ENV === 'development') {
-        // Only log in development
-        console.warn('CSRF token not found. Request may be rejected by the server.');
+        // Only log warning in development, not production
+        console.warn('CSRF token not found for state-changing request');
       }
     }
     
     return config;
   },
   (error) => {
-    // Don't log the full error, just a generic message
-    const endpoint = error.config?.url || 'unknown endpoint';
+    // Safer error handling without logging sensitive data
     if (process.env.NODE_ENV === 'development') {
-      console.error(`Request error for ${endpoint}`);
+      console.error(`API request error: ${error.message}`);
     }
     return Promise.reject(error);
   }
 );
 
-// Enhanced response interceptor with secure logging
+// Enhanced response interceptor with secure logging practices
 apiClient.interceptors.response.use(
   (response) => {
-    // Safe logging without sensitive data
+    // No logging in production, limited logging in development
     if (process.env.NODE_ENV === 'development') {
-      console.log('API Response:', {
-        status: response.status,
-        endpoint: response.config.url?.replace(/\/api\//, ''), // Omit full path
-        success: true
-      });
+      // Log only non-sensitive metadata
+      console.log(`API Response: ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
     }
     return response;
   },
   (error) => {
-    // Safe error logging without sensitive data
+    // Secure error handling
     if (process.env.NODE_ENV === 'development') {
-      console.error('API Error:', {
-        status: error.response?.status,
-        endpoint: error.config?.url?.replace(/\/api\//, ''), // Omit full path
-        type: error.code || 'request_error'
-      });
+      // Log only non-sensitive metadata
+      const status = error.response?.status || 'network error';
+      const url = error.config?.url || 'unknown';
+      console.error(`API Error: ${url} - ${status}`);
     }
 
     // Handle connection errors
-    if (error.code === 'ECONNABORTED') {
-      return Promise.reject({
-        status: 408,
-        message: 'Request timeout - server took too long to respond'
-      });
-    }
-
     if (!error.response) {
       return Promise.reject({
-        status: 503,
-        message: 'Network error - unable to connect to server'
+        message: 'Network error. Please check your connection and try again.'
       });
     }
 
-    // Handle authentication errors
-    if (error.response.status === 401) {
-      // Let the auth provider handle redirection
-      // We'll just pass the error through
+    // Handle specific error cases
+    switch (error.response.status) {
+      case 401:
+        // Authentication error
+        // Let the auth provider handle this
+        break;
+      case 403:
+        // Forbidden
+        return Promise.reject({
+          message: 'You do not have permission to perform this action.'
+        });
+      case 419:
+        // CSRF token mismatch (common for Laravel)
+        return Promise.reject({
+          message: 'Your session has expired. Please refresh the page and try again.'
+        });
+      case 422:
+        // Validation errors
+        if (error.response.data?.errors) {
+          // Handle validation errors
+          const errors = Object.values(error.response.data.errors).flat();
+          return Promise.reject({
+            message: errors.join(', '),
+            errors: error.response.data.errors
+          });
+        }
+        break;
+      case 429:
+        // Rate limiting
+        return Promise.reject({
+          message: 'Too many requests. Please try again later.'
+        });
     }
 
+    // Default error handling
     return Promise.reject({
       status: error.response.status,
-      message: error.response.data?.message || 'An error occurred while processing your request',
+      message: error.response.data?.message || 'An error occurred while processing your request.',
       errors: error.response.data?.errors || null
     });
   }
