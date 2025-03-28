@@ -37,14 +37,19 @@ exports.validateRegister = [
     .withMessage('Username can only contain letters, numbers, and underscores')
     .escape(),
   
+  // Use the same enhanced password validation
   body('password')
     .isString()
-    .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters long')
-    .matches(/\d/)
+    .isLength({ min: 12 })
+    .withMessage('Password must be at least 12 characters long')
+    .matches(/[0-9]/)
     .withMessage('Password must contain at least one number')
-    .matches(/[a-zA-Z]/)
-    .withMessage('Password must contain at least one letter'),
+    .matches(/[a-z]/)
+    .withMessage('Password must contain at least one lowercase letter')
+    .matches(/[A-Z]/)
+    .withMessage('Password must contain at least one uppercase letter')
+    .matches(/[^a-zA-Z0-9]/)
+    .withMessage('Password must contain at least one special character'),
   
   exports.validateRequest
 ];
@@ -69,16 +74,19 @@ exports.validateLogin = [
 exports.validatePassword = [
   body('password')
     .isString()
-    .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters long')
-    .matches(/\d/)
+    .isLength({ min: 12 }) // Increase minimum length to 12
+    .withMessage('Password must be at least 12 characters long')
+    .matches(/[0-9]/)
     .withMessage('Password must contain at least one number')
-    .matches(/[a-zA-Z]/)
-    .withMessage('Password must contain at least one letter'),
+    .matches(/[a-z]/)
+    .withMessage('Password must contain at least one lowercase letter')
+    .matches(/[A-Z]/)
+    .withMessage('Password must contain at least one uppercase letter')
+    .matches(/[^a-zA-Z0-9]/)
+    .withMessage('Password must contain at least one special character'),
   
   exports.validateRequest
 ];
-
 // Wallet address validation
 exports.validateWallet = [
   body('walletAddress')
@@ -99,12 +107,16 @@ exports.validateUpdatePassword = [
   
   body('newPassword')
     .isString()
-    .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters long')
-    .matches(/\d/)
+    .isLength({ min: 12 })
+    .withMessage('Password must be at least 12 characters long')
+    .matches(/[0-9]/)
     .withMessage('Password must contain at least one number')
-    .matches(/[a-zA-Z]/)
-    .withMessage('Password must contain at least one letter'),
+    .matches(/[a-z]/)
+    .withMessage('Password must contain at least one lowercase letter')
+    .matches(/[A-Z]/)
+    .withMessage('Password must contain at least one uppercase letter')
+    .matches(/[^a-zA-Z0-9]/)
+    .withMessage('Password must contain at least one special character'),
   
   exports.validateRequest
 ];

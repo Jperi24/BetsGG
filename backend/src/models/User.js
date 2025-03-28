@@ -135,7 +135,7 @@ userSchema.methods.generateTempJWT = function() {
       tokenVersion: this.tokenVersion
     },
     process.env.JWT_SECRET,
-    { expiresIn: '5m' } // Short expiration for security
+    { expiresIn: '3m' } // Short expiration for security
   );
 };
 

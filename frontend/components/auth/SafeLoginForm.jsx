@@ -7,111 +7,112 @@ import { useRouter } from 'next/navigation';
 import { Loader, AlertCircle } from 'lucide-react';
 import TwoFactorVerification from './TwoFactorVerification';
 
-// Email validation regex
-const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
 const LoginForm = ({ redirectPath = '/dashboard' }) => {
   const router = useRouter();
-  const { login, verify2FA, requires2FA, cancelLogin, isAuthenticated } = useAuth();
+  const { login, verify2FA, requires2FA, tempToken, cancelLogin, isAuthenticated, token } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showingTwoFactor, setShowingTwoFactor] = useState(false);
-  const [formErrors, setFormErrors] = useState({
-    email: '',
-    password: ''
+  
+  // Log component rendering
+  console.log('LoginForm rendered with state:', { 
+    requires2FA, 
+    hasToken: !!token, 
+    isAuthenticated, 
+    showingTwoFactor, 
+    hasTempToken: !!tempToken 
   });
   
   // Check if we should redirect on auth change
   useEffect(() => {
-    if (isAuthenticated && !requires2FA) {
-      router.push(redirectPath);
+    if (isAuthenticated && token && !requires2FA) {
+      console.log('User is authenticated, redirecting to:', redirectPath);
+      
+      // Add a short delay to ensure state is fully updated
+      const timer = setTimeout(() => {
+        router.push(redirectPath);
+      }, 100);
+      
+      return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, requires2FA, router, redirectPath]);
+  }, [isAuthenticated, token, requires2FA, router, redirectPath]);
   
-  // Check if we have a pending 2FA verification
+  // Check if we have a pending 2FA verification on mount
   useEffect(() => {
-    if (requires2FA) {
-      setShowingTwoFactor(true);
+    if (typeof window !== 'undefined') {
+      // Restore email from session storage if available
+      const pendingEmail = sessionStorage.getItem('pendingAuthEmail');
+      if (pendingEmail) {
+        console.log('Restoring pending email:', pendingEmail);
+        setEmail(pendingEmail);
+      }
+      
+      // Check for requires2FA flag
+      if (requires2FA && tempToken) {
+        console.log('2FA verification is required, showing verification form');
+        setShowingTwoFactor(true);
+      }
     }
-  }, [requires2FA]);
-
-  // Validate email
-  const validateEmail = (email) => {
-    if (!email) {
-      return 'Email is required';
-    }
-    if (!EMAIL_REGEX.test(email)) {
-      return 'Please enter a valid email address';
-    }
-    return '';
-  };
-
-  // Validate password
-  const validatePassword = (password) => {
-    if (!password) {
-      return 'Password is required';
-    }
-    return '';
-  };
-
-  // Handle form validation
-  const validateForm = () => {
-    const emailError = validateEmail(email);
-    const passwordError = validatePassword(password);
-    
-    setFormErrors({
-      email: emailError,
-      password: passwordError
-    });
-    
-    return !emailError && !passwordError;
-  };
-
+  }, [requires2FA, tempToken]);
+  
   // Handle normal login (first step)
   const handleLogin = async (e) => {
     e.preventDefault();
     
-    // Validate form
-    if (!validateForm()) {
-      return;
-    }
-
     try {
       setIsLoading(true);
       setError(null);
+      
+      console.log('Attempting login with:', { email });
       
       const response = await login(email, password);
       
       // Handle 2FA requirement - set flag to show 2FA form
       if (response.requires2FA) {
+        console.log('2FA required, showing verification form');
         setShowingTwoFactor(true);
+      }else{
+        router.push(redirectPath);
       }
+      
+
+      
     } catch (err) {
+      console.error('Login error:', err);
       setError(err.message || 'Failed to log in. Please check your credentials.');
     } finally {
       setIsLoading(false);
+      
+      
     }
   };
   
   // Handle 2FA verification success
-  const handle2FAVerificationSuccess = () => {
-    // Redirect will be handled by the auth state change effect
+  const handle2FAVerificationSuccess = (token, user) => {
+    console.log('2FA verification successful, redirecting to:', redirectPath);
+    
+    // Explicit redirect instead of relying on effect
+    const decodedPath = decodeURIComponent(redirectPath);
+    router.push(decodedPath);
   };
   
   // Handle canceling 2FA verification
   const handleCancel2FA = () => {
+    console.log('2FA verification canceled');
     cancelLogin();
     setShowingTwoFactor(false);
   };
   
   // Show 2FA verification form if required
-  if (showingTwoFactor || requires2FA) {
+  if (showingTwoFactor || (requires2FA && tempToken)) {
+    console.log('Rendering 2FA verification form');
     return (
       <div className="w-full max-w-md mx-auto">
         <TwoFactorVerification
+          temporaryToken={tempToken || sessionStorage.getItem('tempToken')}
           onVerificationSuccess={handle2FAVerificationSuccess}
           onCancel={handleCancel2FA}
         />
@@ -120,6 +121,7 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
   }
   
   // Show normal login form
+  console.log('Rendering normal login form');
   return (
     <div className="w-full max-w-md mx-auto">
       {error && (
@@ -145,19 +147,10 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
             autoComplete="email"
             required
             value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              if (formErrors.email) {
-                setFormErrors(prev => ({...prev, email: validateEmail(e.target.value)}));
-              }
-            }}
-            onBlur={() => setFormErrors(prev => ({...prev, email: validateEmail(email)}))}
-            className={`mt-1 block w-full rounded-md ${formErrors.email ? 'border-red-300' : 'border-gray-300'} shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm`}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             disabled={isLoading}
           />
-          {formErrors.email && (
-            <p className="mt-1 text-sm text-red-600">{formErrors.email}</p>
-          )}
         </div>
         
         <div>
@@ -178,26 +171,17 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
             autoComplete="current-password"
             required
             value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              if (formErrors.password) {
-                setFormErrors(prev => ({...prev, password: validatePassword(e.target.value)}));
-              }
-            }}
-            onBlur={() => setFormErrors(prev => ({...prev, password: validatePassword(password)}))}
-            className={`mt-1 block w-full rounded-md ${formErrors.password ? 'border-red-300' : 'border-gray-300'} shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm`}
+            onChange={(e) => setPassword(e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             disabled={isLoading}
           />
-          {formErrors.password && (
-            <p className="mt-1 text-sm text-red-600">{formErrors.password}</p>
-          )}
         </div>
         
         <div>
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-400"
+            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
           >
             {isLoading ? (
               <span className="flex items-center">

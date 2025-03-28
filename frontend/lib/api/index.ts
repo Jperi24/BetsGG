@@ -1,7 +1,7 @@
 // frontend/lib/api/index.ts
 import axios from 'axios';
 
-// Secure API response handling
+// Enhanced secure API response handling
 export const handleApiResponse = (response: any) => {
   if (!response) {
     throw new Error('No response received');
@@ -23,19 +23,21 @@ export const handleApiResponse = (response: any) => {
     return response.data;
   }
 
-  console.error("Invalid API response format");
-  throw new Error('Invalid response format');
+  throw new Error(response.data?.message || 'Invalid response format');
 };
 
-// CSRF token management
+// Improved CSRF token retrieval with proper error handling
 const getCsrfToken = (): string => {
   if (typeof document === 'undefined') return '';
   
   // Get from a csrf meta tag if available
   const metaTag = document.querySelector('meta[name="csrf-token"]');
-  if (metaTag) return metaTag.getAttribute('content') || '';
+  if (metaTag) {
+    const token = metaTag.getAttribute('content');
+    if (token) return token;
+  }
   
-  // Alternatively, get from cookies
+  // Get from the dedicated CSRF cookie
   const cookies = document.cookie.split(';')
     .map(cookie => cookie.trim())
     .reduce((acc: Record<string, string>, cookie) => {
@@ -44,56 +46,67 @@ const getCsrfToken = (): string => {
       return acc;
     }, {});
   
-  return cookies['csrf-token'] || '';
+  return cookies['XSRF-TOKEN'] || '';
 };
 
-// Create secure axios instance
+// Create secure axios instance with proper CSRF handling
 const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
   },
-  withCredentials: true // Sends cookies with requests for authentication
+  withCredentials: true // Ensures cookies are sent with requests
 });
 
-// Request interceptor with CSRF protection
+// Enhanced request interceptor with robust CSRF protection
 apiClient.interceptors.request.use(
   (config) => {
     // Add CSRF token for state-changing methods
     if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
       const token = getCsrfToken();
       if (token) {
-        config.headers['X-CSRF-Token'] = token;
+        config.headers['X-XSRF-TOKEN'] = token; // Standard CSRF header
+      } else if (process.env.NODE_ENV === 'development') {
+        // Only log in development
+        console.warn('CSRF token not found. Request may be rejected by the server.');
       }
     }
     
     return config;
   },
   (error) => {
-    console.error('API Request Error:', error.message);
+    // Don't log the full error, just a generic message
+    const endpoint = error.config?.url || 'unknown endpoint';
+    if (process.env.NODE_ENV === 'development') {
+      console.error(`Request error for ${endpoint}`);
+    }
     return Promise.reject(error);
   }
 );
 
-// Response interceptor with improved security
+// Enhanced response interceptor with secure logging
 apiClient.interceptors.response.use(
   (response) => {
-    // Safe logging that doesn't expose sensitive data
-    console.log('API Response:', {
-      status: response.status,
-      endpoint: response.config.url,
-      success: true
-    });
+    // Safe logging without sensitive data
+    if (process.env.NODE_ENV === 'development') {
+      console.log('API Response:', {
+        status: response.status,
+        endpoint: response.config.url?.replace(/\/api\//, ''), // Omit full path
+        success: true
+      });
+    }
     return response;
   },
   (error) => {
-    // Safe error logging
-    console.error('API Error:', {
-      status: error.response?.status,
-      endpoint: error.config?.url,
-      message: error.message
-    });
+    // Safe error logging without sensitive data
+    if (process.env.NODE_ENV === 'development') {
+      console.error('API Error:', {
+        status: error.response?.status,
+        endpoint: error.config?.url?.replace(/\/api\//, ''), // Omit full path
+        type: error.code || 'request_error'
+      });
+    }
 
     // Handle connection errors
     if (error.code === 'ECONNABORTED') {
@@ -112,13 +125,13 @@ apiClient.interceptors.response.use(
 
     // Handle authentication errors
     if (error.response.status === 401) {
-      // Let the component handle redirection or re-authentication
-      // (Don't automatically redirect from the API client)
+      // Let the auth provider handle redirection
+      // We'll just pass the error through
     }
 
     return Promise.reject({
       status: error.response.status,
-      message: error.response.data?.message || error.message,
+      message: error.response.data?.message || 'An error occurred while processing your request',
       errors: error.response.data?.errors || null
     });
   }

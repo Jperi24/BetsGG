@@ -4,8 +4,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/providers/auth-providers';
 import { Loader, AlertCircle, KeyRound, ShieldCheck } from 'lucide-react';
 
-const TwoFactorVerification = ({ onVerificationSuccess, onCancel }) => {
-  const { verify2FA } = useAuth();
+const TwoFactorVerification = ({ temporaryToken, onVerificationSuccess, onCancel }) => {
+  const { verify2FA } = useAuth(); // Use the auth context instead of direct API call
   const [verificationCode, setVerificationCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -16,6 +16,15 @@ const TwoFactorVerification = ({ onVerificationSuccess, onCancel }) => {
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.focus();
+    }
+    
+    // Check if we have an error stored in session storage
+    if (typeof window !== 'undefined') {
+      const storedError = sessionStorage.getItem('2fa_error');
+      if (storedError) {
+        setError(storedError);
+        sessionStorage.removeItem('2fa_error');
+      }
     }
   }, [isUsingRecoveryCode]);
   
@@ -51,15 +60,21 @@ const TwoFactorVerification = ({ onVerificationSuccess, onCancel }) => {
       setIsLoading(true);
       setError(null);
       
-      await verify2FA(verificationCode, isUsingRecoveryCode);
+      // Use auth context's verify2FA method instead of direct API call
+      const response = await verify2FA(verificationCode, isUsingRecoveryCode);
       
-      // Call the success callback
+      // Call the success callback with the token and user info
       if (onVerificationSuccess) {
-        onVerificationSuccess();
+        onVerificationSuccess(response.token, response.data.user);
       }
       
     } catch (err) {
       setError(err.message || 'Failed to verify code. Please try again.');
+      
+      // Store the error in session storage in case we navigate away
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('2fa_error', err.message || 'Failed to verify code. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -124,7 +139,7 @@ const TwoFactorVerification = ({ onVerificationSuccess, onCancel }) => {
           <p className="mt-2 text-xs text-gray-500 text-center">
             {isUsingRecoveryCode 
               ? 'Recovery codes are case-insensitive and hyphens are optional'
-              : 'This code will expire after a few minutes'}
+              : 'This code will expire in 5 minutes'}
           </p>
         </div>
         

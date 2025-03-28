@@ -108,7 +108,7 @@ exports.login = async (req, res, next) => {
     if (!email || !password) {
       return res.status(400).json({
         status: 'fail',
-        message: 'Please provide email and password'
+        message: 'Please provide both email and password'
       });
     }
     
@@ -116,7 +116,7 @@ exports.login = async (req, res, next) => {
     const user = await User.findOne({ email }).select('+password +twoFactorEnabled');
     
     // Check if user exists
-    if (!user) {
+    if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({
         status: 'fail',
         message: 'Incorrect email or password'
@@ -295,6 +295,44 @@ exports.updatePassword = async (req, res, next) => {
 };
 
 // Forgot password
+// exports.forgotPassword = async (req, res, next) => {
+//   try {
+//     const { email } = req.body;
+    
+//     if (!email) {
+//       return res.status(400).json({
+//         status: 'fail',
+//         message: 'Please provide your email address'
+//       });
+//     }
+    
+//     // Generate reset token
+//     const { resetToken, user } = await passwordResetService.generateResetToken(email);
+    
+//     try {
+//       // Send password reset email
+//       await emailService.sendPasswordResetEmail(email, resetToken, user.username);
+      
+//       res.status(200).json({
+//         status: 'success',
+//         message: 'Password reset link sent to your email'
+//       });
+//     } catch (error) {
+//       // If email fails, revert the changes
+//       user.passwordResetToken = undefined;
+//       user.passwordResetExpires = undefined;
+//       await user.save({ validateBeforeSave: false });
+      
+//       return res.status(500).json({
+//         status: 'error',
+//         message: 'Failed to send password reset email. Please try again later.'
+//       });
+//     }
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 exports.forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -306,8 +344,26 @@ exports.forgotPassword = async (req, res, next) => {
       });
     }
     
+    // Find user by email
+    const user = await User.findOne({ email });
+    
+    // IMPORTANT: Always return the same response whether user exists or not
+    // to prevent account enumeration
+    if (!user) {
+      // Still do some work to maintain consistent timing
+      const dummyToken = crypto.randomBytes(32).toString('hex');
+      // Add artificial delay
+      await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 200));
+      
+      // Return success message even if email doesn't exist
+      return res.status(200).json({
+        status: 'success',
+        message: 'If a user with that email exists, a password reset link was sent'
+      });
+    }
+    
     // Generate reset token
-    const { resetToken, user } = await passwordResetService.generateResetToken(email);
+    const resetToken = await passwordResetService.generateResetToken(user);
     
     try {
       // Send password reset email
@@ -315,7 +371,7 @@ exports.forgotPassword = async (req, res, next) => {
       
       res.status(200).json({
         status: 'success',
-        message: 'Password reset link sent to your email'
+        message: 'If a user with that email exists, a password reset link was sent'
       });
     } catch (error) {
       // If email fails, revert the changes
@@ -325,7 +381,7 @@ exports.forgotPassword = async (req, res, next) => {
       
       return res.status(500).json({
         status: 'error',
-        message: 'Failed to send password reset email. Please try again later.'
+        message: 'There was an error sending the email. Please try again later.'
       });
     }
   } catch (error) {
