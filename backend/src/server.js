@@ -1,4 +1,5 @@
 // src/server.js
+require('dotenv').config();
 const { app, connectDB } = require('./app');
 const seedDatabase = require('./utils/seed-data');
 const tournamentService = require('./services/tournament');

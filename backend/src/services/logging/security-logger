@@ -1,0 +1,437 @@
+// src/services/logging/security-logger.js
+const fs = require('fs').promises;
+const path = require('path');
+const zlib = require('zlib');
+const util = require('util');
+const gzip = util.promisify(zlib.gzip);
+const crypto = require('crypto');
+
+/**
+ * Enhanced security event logger for tracking security-related events
+ * Designed for production and development use with different logging strategies
+ */
+class SecurityLogger {
+  constructor() {
+    // Base log directory
+    this.logDir = path.join(__dirname, '../../../logs');
+    
+    // Application logs structure
+    this.securityLogFile = path.join(this.logDir, 'security.log');
+    this.authLogFile = path.join(this.logDir, 'auth.log');
+    this.accessLogFile = path.join(this.logDir, 'access.log');
+    this.errorLogFile = path.join(this.logDir, 'error.log');
+    
+    // Archive directory for rotated logs
+    this.archiveDir = path.join(this.logDir, 'archive');
+    
+    // Log rotation settings
+    this.maxLogSize = 10 * 1024 * 1024; // 10MB per log file
+    this.maxLogAge = 30 * 24 * 60 * 60 * 1000; // 30 days
+    
+    // Initial setup
+    this.initLogger();
+    
+    // Schedule log rotation once per day
+    this.scheduleLogRotation();
+  }
+
+  /**
+   * Initialize the logger
+   */
+  async initLogger() {
+    try {
+      // Create log directories if they don't exist
+      await fs.mkdir(this.logDir, { recursive: true });
+      await fs.mkdir(this.archiveDir, { recursive: true });
+      
+      // Perform initial log rotation check
+      await this.checkLogRotation();
+      
+      console.log('Security logger initialized');
+    } catch (error) {
+      console.error('Failed to initialize security logger:', error);
+    }
+  }
+
+  /**
+   * Schedule log rotation
+   */
+  scheduleLogRotation() {
+    // Schedule rotation at midnight each day
+    const now = new Date();
+    const tonight = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1,
+      0, 0, 0
+    );
+    const timeToMidnight = tonight.getTime() - now.getTime();
+    
+    // Schedule the first rotation
+    setTimeout(() => {
+      this.rotateAllLogs();
+      
+      // Then schedule it every 24 hours
+      setInterval(() => this.rotateAllLogs(), 24 * 60 * 60 * 1000);
+    }, timeToMidnight);
+  }
+
+  /**
+   * Check if logs need rotation based on size
+   */
+  async checkLogRotation() {
+    try {
+      const logFiles = [
+        this.securityLogFile,
+        this.authLogFile,
+        this.accessLogFile,
+        this.errorLogFile
+      ];
+      
+      for (const logFile of logFiles) {
+        try {
+          const stats = await fs.stat(logFile);
+          if (stats.size > this.maxLogSize) {
+            await this.rotateLog(logFile);
+          }
+        } catch (err) {
+          // File doesn't exist yet, that's ok
+          if (err.code !== 'ENOENT') {
+            console.error(`Error checking log rotation for ${logFile}:`, err);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in checkLogRotation:', error);
+    }
+  }
+
+  /**
+   * Rotate all log files
+   */
+  async rotateAllLogs() {
+    try {
+      await this.rotateLog(this.securityLogFile);
+      await this.rotateLog(this.authLogFile);
+      await this.rotateLog(this.accessLogFile);
+      await this.rotateLog(this.errorLogFile);
+      
+      // Clean up old archives
+      await this.cleanupOldLogs();
+    } catch (error) {
+      console.error('Error rotating logs:', error);
+    }
+  }
+
+  /**
+   * Rotate a specific log file
+   */
+  async rotateLog(logFile) {
+    try {
+      // Check if the file exists
+      try {
+        await fs.access(logFile);
+      } catch (err) {
+        // File doesn't exist, nothing to rotate
+        return;
+      }
+      
+      // Generate timestamp and new filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileName = path.basename(logFile, '.log');
+      const gzipFileName = `${fileName}-${timestamp}.log.gz`;
+      const gzipPath = path.join(this.archiveDir, gzipFileName);
+      
+      // Read the current log
+      const data = await fs.readFile(logFile);
+      
+      // Compress the data
+      const compressedData = await gzip(data);
+      
+      // Write compressed file
+      await fs.writeFile(gzipPath, compressedData);
+      
+      // Truncate the original log file
+      await fs.writeFile(logFile, '');
+      
+      console.log(`Rotated log file: ${logFile} -> ${gzipPath}`);
+    } catch (error) {
+      console.error(`Error rotating log ${logFile}:`, error);
+    }
+  }
+
+  /**
+   * Clean up old log archives
+   */
+  async cleanupOldLogs() {
+    try {
+      const now = Date.now();
+      const files = await fs.readdir(this.archiveDir);
+      
+      for (const file of files) {
+        const filePath = path.join(this.archiveDir, file);
+        const stats = await fs.stat(filePath);
+        
+        // If the file is older than maxLogAge, delete it
+        if (now - stats.mtime.getTime() > this.maxLogAge) {
+          await fs.unlink(filePath);
+          console.log(`Deleted old log archive: ${file}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error cleaning up old logs:', error);
+    }
+  }
+
+  /**
+   * Sanitize log data to prevent log injection attacks
+   */
+  sanitizeLogData(data) {
+    if (typeof data === 'string') {
+      // Remove new lines and carriage returns to prevent log forging
+      return data.replace(/[\r\n]+/g, ' ');
+    } else if (typeof data === 'object' && data !== null) {
+      const sanitized = {};
+      for (const [key, value] of Object.entries(data)) {
+        sanitized[key] = this.sanitizeLogData(value);
+      }
+      return sanitized;
+    }
+    return data;
+  }
+
+  /**
+   * Anonymize sensitive data in logs
+   */
+  anonymizeData(data, keysToAnonymize = ['password', 'token', 'secret', 'authentication', 'cookie', 'session']) {
+    if (typeof data !== 'object' || data === null) {
+      return data;
+    }
+    
+    const anonymized = { ...data };
+    
+    for (const key of Object.keys(anonymized)) {
+      // Check if this key should be anonymized
+      if (keysToAnonymize.some(k => key.toLowerCase().includes(k.toLowerCase()))) {
+        anonymized[key] = typeof anonymized[key] === 'string' 
+          ? '********' 
+          : '[REDACTED]';
+      } else if (typeof anonymized[key] === 'object' && anonymized[key] !== null) {
+        // Recursively anonymize nested objects
+        anonymized[key] = this.anonymizeData(anonymized[key], keysToAnonymize);
+      }
+    }
+    
+    return anonymized;
+  }
+
+  /**
+   * Main method for logging security events
+   * @param {string} eventType - Type of security event
+   * @param {string|null} userId - User ID (if available)
+   * @param {Object} details - Event details
+   */
+  async logAuthEvent(eventType, userId, details = {}) {
+    try {
+      // Check log rotation
+      await this.checkLogRotation();
+      
+      // Build log entry
+      const timestamp = new Date().toISOString();
+      const sanitizedDetails = this.sanitizeLogData(details);
+      const anonymizedDetails = this.anonymizeData(sanitizedDetails);
+      
+      // Generate a unique event ID
+      const eventId = crypto.randomBytes(16).toString('hex');
+      
+      // Extract IP from details or use a default
+      const ip = details.ip || '0.0.0.0';
+      
+      // Format the log entry
+      const logEntry = {
+        timestamp,
+        eventId,
+        eventType,
+        userId: userId || 'anonymous',
+        ip,
+        details: anonymizedDetails
+      };
+      
+      // Convert to string for logging
+      const logLine = `${JSON.stringify(logEntry)}\n`;
+      
+      // Determine which log file to use based on event type
+      let logFile = this.securityLogFile;
+      if (eventType.includes('AUTH_') || eventType.includes('LOGIN_') || eventType.includes('2FA_')) {
+        logFile = this.authLogFile;
+      } else if (eventType === 'REQUEST' || eventType === 'NOT_FOUND') {
+        logFile = this.accessLogFile;
+      } else if (eventType.includes('ERROR') || eventType === 'UNHANDLED_REJECTION' || eventType === 'UNCAUGHT_EXCEPTION') {
+        logFile = this.errorLogFile;
+      }
+      
+      // In development, log to console
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[SECURITY] ${eventType}`, logEntry);
+      }
+      
+      // Always write to the appropriate log file
+      await fs.appendFile(logFile, logLine);
+      
+      // For high-severity events, log to all security log files
+      const highSeverityEvents = ['INJECTION_ATTEMPT', 'CSRF_FAILURE', 'BRUTE_FORCE_ATTEMPT', 'PRIVILEGE_ESCALATION', 'UNAUTHORIZED_ACCESS'];
+      if (highSeverityEvents.includes(eventType)) {
+        // Also log to the main security log if it's not already there
+        if (logFile !== this.securityLogFile) {
+          await fs.appendFile(this.securityLogFile, logLine);
+        }
+        
+        // Log to error log if not already there
+        if (logFile !== this.errorLogFile) {
+          await fs.appendFile(this.errorLogFile, logLine);
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error writing security log:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Log authentication success
+   */
+  async logAuthSuccess(userId, ip, details = {}) {
+    return this.logAuthEvent('AUTH_SUCCESS', userId, {
+      ip,
+      ...details
+    });
+  }
+
+  /**
+   * Log authentication failure
+   */
+  async logAuthFailure(attemptedUserId, ip, reason, details = {}) {
+    return this.logAuthEvent('AUTH_FAILURE', attemptedUserId, {
+      ip,
+      reason,
+      ...details
+    });
+  }
+
+  /**
+   * Log password changes
+   */
+  async logPasswordChange(userId, ip, details = {}) {
+    return this.logAuthEvent('PASSWORD_CHANGE', userId, {
+      ip,
+      ...details
+    });
+  }
+
+  /**
+   * Log user registration
+   */
+  async logUserRegistration(userId, ip, details = {}) {
+    return this.logAuthEvent('USER_REGISTRATION', userId, {
+      ip,
+      ...details
+    });
+  }
+
+  /**
+   * Log suspicious activity
+   */
+  async logSuspiciousActivity(userId, ip, activity, details = {}) {
+    return this.logAuthEvent('SUSPICIOUS_ACTIVITY', userId, {
+      ip,
+      activity,
+      ...details
+    });
+  }
+
+  /**
+   * Log API access
+   */
+  async logApiAccess(userId, endpoint, method, ip, details = {}) {
+    return this.logAuthEvent('API_ACCESS', userId, {
+      endpoint,
+      method,
+      ip,
+      ...details
+    });
+  }
+
+  /**
+   * Log SQL/NoSQL injection attempts
+   */
+  async logInjectionAttempt(userId, ip, query, details = {}) {
+    return this.logAuthEvent('INJECTION_ATTEMPT', userId, {
+      ip,
+      query,
+      ...details
+    });
+  }
+
+  /**
+   * Log CSRF failures
+   */
+  async logCsrfFailure(userId, ip, path, details = {}) {
+    return this.logAuthEvent('CSRF_FAILURE', userId, {
+      ip,
+      path,
+      ...details
+    });
+  }
+
+  /**
+   * Log rate limit hits
+   */
+  async logRateLimitHit(userId, ip, endpoint, details = {}) {
+    return this.logAuthEvent('RATE_LIMIT_HIT', userId, {
+      ip,
+      endpoint,
+      ...details
+    });
+  }
+
+  /**
+   * Log two-factor authentication events
+   */
+  async log2FAEvent(userId, ip, action, success, details = {}) {
+    return this.logAuthEvent(`2FA_${action.toUpperCase()}`, userId, {
+      ip,
+      success,
+      ...details
+    });
+  }
+
+  /**
+   * Log wallet operations
+   */
+  async logWalletOperation(userId, ip, operation, amount, currency, details = {}) {
+    return this.logAuthEvent('WALLET_OPERATION', userId, {
+      ip,
+      operation,
+      amount,
+      currency,
+      ...details
+    });
+  }
+
+  /**
+   * Log betting activity
+   */
+  async logBettingActivity(userId, ip, action, amount, details = {}) {
+    return this.logAuthEvent('BETTING_ACTIVITY', userId, {
+      ip,
+      action,
+      amount,
+      ...details
+    });
+  }
+}
+
+// Export a singleton instance
+module.exports = new SecurityLogger();

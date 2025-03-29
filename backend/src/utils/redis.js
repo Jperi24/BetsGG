@@ -57,6 +57,12 @@ const createRedisClient = () => {
     console.log(`Redis connection retry in ${delay}ms (attempt ${retries})`);
     return delay;
   };
+  console.log('Redis configuration:', {
+    REDIS_URL: process.env.REDIS_URL,
+    REDIS_PORT: process.env.REDIS_PORT,
+    REDIS_PASSWORD: process.env.REDIS_PASSWORD ? '[REDACTED]' : undefined,
+    REDIS_TLS: process.env.REDIS_TLS
+  });
 
   // Create Redis client with robust configuration
   const client = createClient({
@@ -67,7 +73,8 @@ const createRedisClient = () => {
       port: process.env.REDIS_PORT,
       connectTimeout: 10000, // 10 seconds
       keepAlive: 5000, // 5 seconds
-      reconnectStrategy: retryStrategy
+      reconnectStrategy: retryStrategy,
+      tls: process.env.REDIS_TLS === 'true'
     },
     // Limit the command queue to avoid memory issues during reconnection
     commandsQueueMaxLength: 5000
