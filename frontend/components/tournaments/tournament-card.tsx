@@ -61,7 +61,7 @@ export default function TournamentCard({ tournament }: TournamentCardProps) {
           {/* Tournament Image */}
           <Image
             src={getImage()}
-            alt={tournament.name}
+            alt={tournament.name || 'Tournament image'}
             fill
             sizes="(max-width: 768px) 100vw, 33vw"
             className="object-cover"

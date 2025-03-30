@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import { getCsrfToken } from '@/lib/api/auth';
 
 /**
  * CsrfToken component that ensures a valid CSRF token is set
@@ -12,37 +12,31 @@ const CsrfToken = () => {
   const [isTokenFetched, setIsTokenFetched] = useState(false);
 
   useEffect(() => {
-    // Check if we already have a CSRF token cookie
-    const hasCsrfCookie = document.cookie
-      .split('; ')
-      .some(row => row.startsWith('XSRF-TOKEN='));
+    const initializeToken = async () => {
+      try {
+        // Check if we already have a CSRF token
+        const existingToken = await getCsrfToken(false);
+        
+        if (!existingToken) {
+          // Fetch a new token if we don't have one
+          await getCsrfToken(true);
+        }
+        
+        setIsTokenFetched(true);
+      } catch (error) {
+        console.error('CSRF token initialization error:', error);
+        setIsTokenFetched(true); // Continue anyway
+      }
+    };
     
-    // Only fetch a new token if we don't have one
-    if (!hasCsrfCookie) {
-      fetchCsrfToken();
-    } else {
-      setIsTokenFetched(true);
-    }
+    initializeToken();
   }, []);
-
-  const fetchCsrfToken = async () => {
-    try {
-      // This endpoint should set the CSRF token cookie
-      await axios.get('/api/csrf-token', { withCredentials: true });
-      setIsTokenFetched(true);
-    } catch (error) {
-      console.error('Failed to fetch CSRF token');
-    }
-  };
 
   // Add a meta tag with the CSRF token for the API client to use
   useEffect(() => {
     if (isTokenFetched) {
-      // Extract token from cookie
-      const token = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('XSRF-TOKEN='))
-        ?.split('=')[1];
+      // Get the token using our utility function (non-async here)
+      const token = getCsrfToken(false);
       
       if (token) {
         // Set or update the meta tag
@@ -52,7 +46,7 @@ const CsrfToken = () => {
           meta.name = 'csrf-token';
           document.head.appendChild(meta);
         }
-        meta.content = decodeURIComponent(token);
+        meta.content = token;
       }
     }
   }, [isTokenFetched]);

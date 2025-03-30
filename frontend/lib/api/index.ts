@@ -27,23 +27,33 @@ export const handleApiResponse = (response: any) => {
 };
 
 // Secure CSRF token handling
+// Fix the getCsrfToken function to be synchronous
 const getCsrfToken = (): string => {
   if (typeof document === 'undefined') return '';
   
-  // Get from a csrf meta tag if available
+  // Check for csrf_token cookie first
+  const csrfCookie = document.cookie
+    .split('; ')
+    .find(row => row.startsWith('csrf_token='));
+    
+  if (csrfCookie) {
+    return decodeURIComponent(csrfCookie.split('=')[1]);
+  }
+  
+  // Fallback to alternative cookie names
+  const xsrfCookie = document.cookie
+    .split('; ')
+    .find(row => row.startsWith('XSRF-TOKEN='));
+    
+  if (xsrfCookie) {
+    return decodeURIComponent(xsrfCookie.split('=')[1]);
+  }
+  
+  // Check meta tag
   const metaTag = document.querySelector('meta[name="csrf-token"]');
   if (metaTag) {
     const token = metaTag.getAttribute('content');
     if (token) return token;
-  }
-  
-  // Get from the CSRF cookie set by the server (typically 'XSRF-TOKEN')
-  const cookieValue = document.cookie
-    .split('; ')
-    .find(row => row.startsWith('XSRF-TOKEN='));
-    
-  if (cookieValue) {
-    return decodeURIComponent(cookieValue.split('=')[1]);
   }
   
   return '';
@@ -64,11 +74,12 @@ apiClient.interceptors.request.use(
   (config) => {
     // Add CSRF token for state-changing methods
     if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
-      const token = getCsrfToken();
+      const token = getCsrfToken(); // This is now synchronous
       if (token) {
-        config.headers['X-CSRF-TOKEN'] = token; // Standard header for CSRF
+        // Use both header formats to ensure compatibility
+        config.headers['X-CSRF-Token'] = token; // Match the case in your backend
+        config.headers['X-CSRF-TOKEN'] = token; // Alternative format
       } else if (process.env.NODE_ENV === 'development') {
-        // Only log warning in development, not production
         console.warn('CSRF token not found for state-changing request');
       }
     }

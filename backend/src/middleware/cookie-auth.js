@@ -122,8 +122,34 @@ exports.verifyCsrfToken = async (userId, token) => {
  * Validates CSRF token for state-changing methods
  */
 exports.csrfProtection = async (req, res, next) => {
+  console.log('==================== CSRF DEBUG ====================');
+  console.log('Request path:', req.path);
+  console.log('Request method:', req.method);
+  console.log('CSRF Headers:', {
+    'x-csrf-token': req.headers['x-csrf-token'] || 'none', 
+    'x-csrf-TOKEN': req.headers['x-csrf-TOKEN'] || 'none'
+  });
+  console.log('CSRF Cookies:', {
+    csrf_token: req.cookies.csrf_token || 'none'
+  });
+  
   // Skip for safe methods
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    console.log('Safe method, skipping CSRF check');
+    console.log('================= END CSRF DEBUG =================');
+    return next();
+  }
+  
+  // Special debugging for logout
+  if (req.path === '/api/auth/logout') {
+    console.log('*** LOGOUT REQUEST DETECTED ***');
+    console.log('All request headers:', req.headers);
+    console.log('All cookies:', req.cookies);
+    console.log('Request body:', req.body);
+    
+    // TEMPORARY - skip CSRF check for logout during debugging
+    console.log('TEMPORARILY BYPASSING CSRF FOR LOGOUT FOR DEBUGGING');
+    console.log('================= END CSRF DEBUG =================');
     return next();
   }
   

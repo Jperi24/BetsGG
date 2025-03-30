@@ -11,6 +11,7 @@ const notificationService = require('../services/notification');
  * Verifies JWT token from HTTP-only cookie and adds user to request
  */
 exports.protect = async (req, res, next) => {
+  
   try {
     // 1) Get token from cookies
     const token = req.cookies.auth_token;

@@ -1,3 +1,4 @@
+// src/utils/redis.js
 const { createClient } = require('redis');
 const EventEmitter = require('events');
 
@@ -195,6 +196,43 @@ const delAsync = async (key) => {
   }
 };
 
+// Add Set operations
+const saddAsync = async (key, ...members) => {
+  try {
+    return await executeWithBreaker(() => client.sAdd(key, members));
+  } catch (error) {
+    console.error(`Error adding to set ${key}:`, error);
+    return 0;
+  }
+};
+
+const sremAsync = async (key, ...members) => {
+  try {
+    return await executeWithBreaker(() => client.sRem(key, members));
+  } catch (error) {
+    console.error(`Error removing from set ${key}:`, error);
+    return 0;
+  }
+};
+
+const smembersAsync = async (key) => {
+  try {
+    return await executeWithBreaker(() => client.sMembers(key));
+  } catch (error) {
+    console.error(`Error getting members of set ${key}:`, error);
+    return [];
+  }
+};
+
+const sismemberAsync = async (key, member) => {
+  try {
+    return await executeWithBreaker(() => client.sIsMember(key, member));
+  } catch (error) {
+    console.error(`Error checking member in set ${key}:`, error);
+    return false;
+  }
+};
+
 // Health check function
 const healthCheck = async () => {
   try {
@@ -242,6 +280,10 @@ module.exports = {
   getAsync,
   setAsync,
   delAsync,
+  saddAsync,
+  sremAsync,
+  smembersAsync,
+  sismemberAsync,
   healthCheck,
   shutdown,
   isConnected: () => isConnected

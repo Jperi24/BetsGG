@@ -51,11 +51,106 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
   return handleApiResponse(response);
 };
 
-// Logout user
+// Improved logout function with CSRF token support
 export const logout = async (): Promise<{ status: string; message: string }> => {
-  const response = await apiClient.post('/auth/logout');
-  return handleApiResponse(response);
+  try {
+    // Get CSRF token synchronously from cookies
+    let csrfToken = '';
+    
+    if (typeof document !== 'undefined') {
+      // Directly check for the cookie without any async operations
+      const csrfCookie = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('csrf_token='));
+        
+      if (csrfCookie) {
+        csrfToken = decodeURIComponent(csrfCookie.split('=')[1]);
+      } else {
+        // Check alternative cookie name
+        const xsrfCookie = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('XSRF-TOKEN='));
+          
+        if (xsrfCookie) {
+          csrfToken = decodeURIComponent(xsrfCookie.split('=')[1]);
+        }
+      }
+    }
+    
+    // Debug token in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('CSRF Token for logout:', csrfToken);
+      console.log('Available cookies:', document.cookie);
+    }
+    
+    // Call server logout endpoint with explicit token
+    const response = await apiClient.post('/auth/logout', {}, {
+      headers: {
+        // Use string directly, not a promise
+        'X-CSRF-Token': csrfToken || '',
+        'X-CSRF-TOKEN': csrfToken || ''
+      }
+    });
+    
+    // Clear storage and cookies as before...
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      sessionStorage.removeItem('tempToken');
+      sessionStorage.removeItem('requires2FA');
+      sessionStorage.removeItem('pendingAuthEmail');
+      
+      // Clear cookies...
+      document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
+      document.cookie = 'session_id=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
+      document.cookie = 'csrf_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
+      
+      // Clear other cookies...
+    }
+    
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error('Logout error:', error);
+    // Clear storage if request fails...
+    throw error;
+  }
 };
+
+export const getCsrfToken = async (fetchNew = false): Promise<string | null> => {
+  if (typeof document === 'undefined') return null; // Server-side check
+  
+  // First check for token in meta tag
+  const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  if (metaToken) return metaToken;
+  
+  // Then check cookies
+  const cookieToken = document.cookie
+    .split('; ')
+    .find(row => row.startsWith('XSRF-TOKEN='))
+    ?.split('=')[1];
+    
+  if (cookieToken) return decodeURIComponent(cookieToken);
+  
+  // Fetch a new token if requested and not found
+  if (fetchNew) {
+    try {
+      await apiClient.get('/auth/csrf-token', { withCredentials: true });
+      
+      // Check for token in cookies after fetching
+      const newToken = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('XSRF-TOKEN='))
+        ?.split('=')[1];
+        
+      if (newToken) return decodeURIComponent(newToken);
+    } catch (error) {
+      console.error('Failed to fetch CSRF token:', error);
+    }
+  }
+  
+  return null;
+};
+
+
 
 // Verify 2FA during login
 export const verify2FALogin = async (

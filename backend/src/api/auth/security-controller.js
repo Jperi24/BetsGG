@@ -9,12 +9,16 @@ const sessionService = require('../../services/auth/session');
 exports.refreshCsrfToken = async (req, res, next) => {
   try {
     const userId = req.user.id;
+    console.log("refreshCSRFToken called")
     
     // Generate a fresh CSRF token
     const csrfToken = await cookieAuth.generateCsrfToken(userId);
+
+    console.log("Got csrf Token",csrfToken)
     
     // Set as cookie
     cookieAuth.setCsrfCookie(res, csrfToken);
+    
     
     res.status(200).json({
       status: 'success',

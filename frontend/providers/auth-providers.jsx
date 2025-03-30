@@ -281,14 +281,7 @@ export function AuthProvider({ children }) {
         console.log('Initiating logout process');
       }
       
-      // Call server endpoint to invalidate the session cookie
-      await apiLogout();
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Logout error:', getSafeErrorMessage(error));
-      }
-    } finally {
-      // Clean up client state regardless of server response
+      // First, update local state to prevent UI flashing
       setUser(null);
       setRequires2FA(false);
       setAuthState({ needs2FA: false });
@@ -299,7 +292,26 @@ export function AuthProvider({ children }) {
         setSessionRefreshInterval(null);
       }
       
-      // Redirect to home page
+      // Then call server endpoint to invalidate the session cookie
+      await apiLogout();
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Logout completed successfully');
+      }
+      
+      // Reload the page to ensure all state is cleared
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Logout error:', error);
+      }
+      
+      // Even if the server call fails, ensure local state is cleared
+      setUser(null);
+      
+      // Force reload to clear everything
       if (typeof window !== 'undefined') {
         window.location.href = '/';
       }
