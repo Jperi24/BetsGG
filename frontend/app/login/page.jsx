@@ -10,7 +10,7 @@ import { Loader } from 'lucide-react';
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAuthenticated, isLoading, authInitialized, requires2FA, token } = useAuth();
+  const { isAuthenticated, isLoading, authInitialized, requires2FA } = useAuth();
   
   // Get the redirect path from URL query params if it exists
   const [redirectPath, setRedirectPath] = useState('/dashboard');
@@ -33,17 +33,16 @@ export default function LoginPage() {
       isAuthenticated, 
       isLoading, 
       authInitialized, 
-      requires2FA,
-      hasToken: !!token
+      requires2FA
     });
     
-    if (!isLoading && isAuthenticated && token && !requires2FA) {
+    if (!isLoading && isAuthenticated && !requires2FA) {
       console.log('User is authenticated, redirecting to:', redirectPath);
       router.push(redirectPath);
     }
     
     setRedirectionChecked(true);
-  }, [isLoading, isAuthenticated, router, redirectPath, authInitialized, requires2FA, token, redirectionChecked]);
+  }, [isLoading, isAuthenticated, router, redirectPath, authInitialized, requires2FA, redirectionChecked]);
   
   if (!authInitialized || isLoading) {
     return (
@@ -57,7 +56,7 @@ export default function LoginPage() {
   }
   
   // Only show the redirecting UI if actually authenticated and not requiring 2FA
-  if (isAuthenticated && token && !requires2FA && redirectionChecked) {
+  if (isAuthenticated  && !requires2FA && redirectionChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-gray-50">
         <div className="text-center">
@@ -70,7 +69,7 @@ export default function LoginPage() {
   
   // Debug information to help troubleshoot
   console.log('Rendering login form with auth state:', { 
-    isAuthenticated, requires2FA, hasToken: !!token 
+    isAuthenticated, requires2FA
   });
   
   return (

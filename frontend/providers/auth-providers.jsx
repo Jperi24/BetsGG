@@ -49,6 +49,7 @@ export function AuthProvider({ children }) {
   const [authState, setAuthState] = useState({ needs2FA: false });
   const [authInitialized, setAuthInitialized] = useState(false);
   const [sessionRefreshInterval, setSessionRefreshInterval] = useState(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   // Enhanced Login function with improved security
   const login = async (email, password) => {
@@ -125,6 +126,7 @@ export function AuthProvider({ children }) {
             console.log('User session found');
           }
           setUser(response.data.user);
+          setIsLoggedIn(true);
           
           // Set up session refresh
           setupSessionRefresh();
@@ -329,7 +331,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     isLoading,
-    isAuthenticated: !!user,
+    isAuthenticated: isLoggedIn,
     requires2FA,
     authInitialized,
     login,

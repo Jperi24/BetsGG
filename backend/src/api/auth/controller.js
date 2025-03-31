@@ -168,7 +168,7 @@ exports.login = async (req, res, next) => {
 // Improved logout with session invalidation
 exports.logout = async (req, res, next) => {
   try {
-    console.log("Got HEREEEEEE Logout")
+  
     // Get session ID from cookie
     const sessionId = req.cookies.session_id;
     

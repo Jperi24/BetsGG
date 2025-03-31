@@ -19,6 +19,8 @@ export default function LoginPage() {
   // Get the redirect path from URL query params if it exists
   const redirectPath = searchParams.get('from') || '/dashboard';
   
+
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     

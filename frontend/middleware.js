@@ -33,8 +33,10 @@ export function middleware(request) {
   // Handle auth routes (login, register)
   if (authRoutes.some(route => pathname === route)) {
     if (isAuthenticated) {
+      
       // Redirect to dashboard if already authenticated
       return NextResponse.redirect(new URL('/dashboard', request.url));
+      
     }
   }
   
