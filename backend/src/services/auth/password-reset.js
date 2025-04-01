@@ -8,12 +8,26 @@ const { AppError } = require('../../middleware/error');
  * @param {string} email - User's email
  * @returns {Object} - Contains reset token and user info
  */
-const generateResetToken = async (email) => {
+const generateResetToken = async (user) => {
   // Find user by email
-  const user = await User.findOne({ email });
-  if (!user) {
-    throw new AppError('No user with that email address exists', 404);
+  const sanitizedEmail = user.email.trim().toLowerCase();
+  const foundUser = await User.findOne({ email: sanitizedEmail });
+  
+  
+  if (!foundUser) {
+    
+    // Still do some work to maintain consistent timing
+    const dummyToken = crypto.randomBytes(32).toString('hex');
+    // Add artificial delay
+    await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 200));
+    
+    // Return success message even if email doesn't exist
+    return res.status(200).json({
+      status: 'success',
+      message: 'If a user with that email exists, a password reset link was sent'
+    });
   }
+  
 
   // Generate random reset token
   const resetToken = crypto.randomBytes(32).toString('hex');
@@ -25,14 +39,13 @@ const generateResetToken = async (email) => {
     .digest('hex');
   
   // Save to user document with expiration (10 minutes)
-  user.passwordResetToken = hashedToken;
-  user.passwordResetExpires = Date.now() + 10 * 60 * 1000;
+  foundUser.passwordResetToken = hashedToken;
+  foundUser.passwordResetExpires = Date.now() + 10 * 60 * 1000;
   await user.save({ validateBeforeSave: false });
   
-  return {
-    resetToken,
-    user
-  };
+  return resetToken
+    
+  
 };
 
 /**

@@ -17,7 +17,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   
   // Get the redirect path from URL query params if it exists
-  const redirectPath = searchParams.get('from') || '/dashboard';
+  // const redirectPath = searchParams.get('from') || '/dashboard';
+  const redirectPath = '/dashboard';
   
 
   
@@ -34,11 +35,14 @@ export default function LoginPage() {
     setError(null);
     
     try {
+      console.log("Initializing Login")
       await login(email, password);
-      router.push(redirectPath);
+      console.log("succesfful login")
+      
     } catch (err: any) {
       setError(err.message || 'Failed to log in. Please check your credentials.');
     } finally {
+      router.push(redirectPath);
       setIsLoading(false);
     }
   };

@@ -38,7 +38,7 @@ export default function LoginPage() {
     
     if (!isLoading && isAuthenticated && !requires2FA) {
       console.log('User is authenticated, redirecting to:', redirectPath);
-      router.push(redirectPath);
+      
     }
     
     setRedirectionChecked(true);

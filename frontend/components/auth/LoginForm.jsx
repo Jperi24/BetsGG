@@ -12,7 +12,8 @@ const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 const LoginForm = ({ redirectPath = '/dashboard' }) => {
   const router = useRouter();
-  const { login, verify2FA, requires2FA, cancelLogin, isAuthenticated } = useAuth();
+  const { login, verify2FA, requires2FA, cancelLogin, isAuthenticated: contextIsAuthenticated } = useAuth();
+  const [localIsAuthenticated, setLocalIsAuthenticated] = useState(contextIsAuthenticated);
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,10 +27,15 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
   
   // Check if we should redirect on auth change
   useEffect(() => {
-    if (isAuthenticated && !requires2FA) {
-      router.push(redirectPath);
+    if (localIsAuthenticated && !requires2FA) {
+      console.log("isAuthenticated is:",localIsAuthenticated)
+      const timer = setTimeout(() => {
+        router.push(redirectPath);
+      }, 100);
+      
+      return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, requires2FA, router, redirectPath]);
+  }, [localIsAuthenticated, requires2FA, router, redirectPath]);
   
   // Check if we have a pending 2FA verification
   useEffect(() => {
@@ -88,10 +94,14 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
       // Handle 2FA requirement - set flag to show 2FA form
       if (response.requires2FA) {
         setShowingTwoFactor(true);
+      }else{
+        setLocalIsAuthenticated(true)
       }
     } catch (err) {
       setError(err.message || 'Failed to log in. Please check your credentials.');
     } finally {
+      
+
       setIsLoading(false);
     }
   };

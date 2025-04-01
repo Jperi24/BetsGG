@@ -347,8 +347,10 @@ exports.forgotPassword = async (req, res, next) => {
     }
     
     // Find user by email
-    const user = await User.findOne({ email });
+    const sanitizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: sanitizedEmail });
     
+
     // IMPORTANT: Always return the same response whether user exists or not
     // to prevent account enumeration
     if (!user) {
@@ -365,7 +367,9 @@ exports.forgotPassword = async (req, res, next) => {
     }
     
     // Generate reset token
-    const resetToken = await passwordResetService.generateResetToken(user);
+    const resetToken = user.createPasswordResetToken();
+    await user.save({ validateBeforeSave: false });
+    // const resetToken = await passwordResetService.generateResetToken(user);
     
     try {
       // Send password reset email

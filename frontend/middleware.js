@@ -17,7 +17,7 @@ export function middleware(request) {
   const { pathname } = request.nextUrl;
   
   // More reliable token check
-  const token = request.cookies.get('token')?.value;
+  const token = request.cookies.get('auth_token')?.value;
   const isAuthenticated = !!token && token.length > 20; // Basic validation
   
   // Handle protected routes

@@ -126,7 +126,8 @@ export function AuthProvider({ children }) {
             console.log('User session found');
           }
           setUser(response.data.user);
-          setIsLoggedIn(true);
+          
+        
           
           // Set up session refresh
           setupSessionRefresh();
@@ -223,6 +224,7 @@ export function AuthProvider({ children }) {
     // Store user data in state only
     // Rely on HTTP-only cookies set by the server for auth token
     setUser(response.data.user);
+    setIsLoggedIn(true);
     
     // Set up session refresh for the new session
     setupSessionRefresh();
@@ -331,7 +333,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     isLoading,
-    isAuthenticated: isLoggedIn,
+    isAuthenticated: !!user,
     requires2FA,
     authInitialized,
     login,
