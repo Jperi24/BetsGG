@@ -1,5 +1,7 @@
 // src/api/auth/controller.js - Updated with cookie-based auth
 const User = require('../../models/User');
+
+const crypto = require('crypto');
 const { AppError } = require('../../middleware/error');
 const passwordResetService = require('../../services/auth/password-reset');
 const twoFactorService = require('../../services/auth/two-factor');
@@ -350,7 +352,6 @@ exports.forgotPassword = async (req, res, next) => {
     const sanitizedEmail = email.trim().toLowerCase();
     const user = await User.findOne({ email: sanitizedEmail });
     
-
     // IMPORTANT: Always return the same response whether user exists or not
     // to prevent account enumeration
     if (!user) {
@@ -367,9 +368,18 @@ exports.forgotPassword = async (req, res, next) => {
     }
     
     // Generate reset token
-    const resetToken = user.createPasswordResetToken();
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    
+    // Hash token for storage
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+    
+    // Save token to user document
+    user.passwordResetToken = hashedToken;
+    user.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes expiry
     await user.save({ validateBeforeSave: false });
-    // const resetToken = await passwordResetService.generateResetToken(user);
     
     try {
       // Send password reset email
@@ -391,6 +401,7 @@ exports.forgotPassword = async (req, res, next) => {
       });
     }
   } catch (error) {
+    console.error('Forgot password error:', error);
     next(error);
   }
 };

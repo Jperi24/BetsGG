@@ -57,11 +57,12 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  passwordResetToken:{
-    type:String,
+  passwordResetToken: {
+    type: String,
   },
-  // passwordResetToken: String,
-  // passwordResetExpires: Date,
+  passwordResetExpires: {
+    type: Date,
+  },
   passwordResetAttempts: {
     type: Number,
     default: 0
