@@ -216,23 +216,20 @@ export function AuthProvider({ children }) {
   };
 
   // Secure processing of authentication response
-  const handleAuthSuccess = (response) => {
-    if (!response || !response.data || !response.data.user) {
-      throw new Error('Invalid authentication response');
-    }
-    
-    // Store user data in state only
-    // Rely on HTTP-only cookies set by the server for auth token
-    setUser(response.data.user);
-    setIsLoggedIn(true);
-    
-    // Set up session refresh for the new session
-    setupSessionRefresh();
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Authentication successful');
-    }
-  };
+ // In handleAuthSuccess function in auth-providers.jsx
+const handleAuthSuccess = (response) => {
+  if (!response || !response.data || !response.data.user) {
+    throw new Error('Invalid authentication response');
+  }
+  
+  // Store user data in state
+  setUser(response.data.user);
+  setIsLoggedIn(true);
+  setIsAuthenticated(true); // Make sure this is properly updated
+  
+  // Set up session refresh for the new session
+  setupSessionRefresh();
+};
 
   // Cancel login/2FA process
   const cancelLogin = () => {

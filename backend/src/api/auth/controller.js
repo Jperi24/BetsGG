@@ -464,6 +464,22 @@ exports.setupTwoFactor = async (req, res, next) => {
     next(error);
   }
 };
+// Handle Google OAuth callback
+exports.googleAuthCallback = async (req, res, next) => {
+  try {
+    // User will be attached to req by passport
+    const user = req.user;
+    
+    // Generate session and send tokens
+    await createSendToken(user, 200, req, res);
+    
+    // Redirect to frontend
+    res.redirect(`${process.env.FRONTEND_URL}/auth/success`);
+  } catch (error) {
+    console.error('Google auth callback error:', error);
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=google-auth-failed`);
+  }
+};
 
 exports.verifyAndEnableTwoFactor = async (req, res, next) => {
   try {

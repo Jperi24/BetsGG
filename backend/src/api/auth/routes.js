@@ -7,6 +7,15 @@ const sessionController = require('./session-controller');
 const { protect, require2FAVerified } = require('../../middleware/auth');
 const { validateRegister, validateLogin, validatePassword, validateWallet, validateRequest, validateUpdatePassword } = require('../../middleware/validation');
 const { body } = require('express-validator');
+const passport = require('passport');
+
+// Google authentication routes
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+router.get('/google/callback', 
+  passport.authenticate('google', { session: false, failureRedirect: '/login?error=google-auth-failed' }),
+  authController.googleAuthCallback
+);
 
 // Public routes
 router.post('/register', validateRegister, authController.register);
@@ -28,6 +37,7 @@ router.post('/verify-2fa',
   ],
   authController.verifyTwoFactor
 );
+
 router.post('/forgot-password',
   [
     body('email')

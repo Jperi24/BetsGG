@@ -84,6 +84,15 @@ const userSchema = new mongoose.Schema({
     type: [String],
     select: false
   },
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  emailVerified: {
+    type: Boolean,
+    default: false
+  },
   
   // Login attempt tracking (for security)
   loginAttempts: {

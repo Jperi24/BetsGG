@@ -7,6 +7,8 @@ import LoginForm from '@/components/auth/LoginForm';
 import { useAuth } from '@/providers/auth-providers';
 import { Loader } from 'lucide-react';
 
+
+
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -26,23 +28,15 @@ export default function LoginPage() {
   }, [searchParams, redirectPath]);
   
   // Check authentication status and redirect if needed
-  useEffect(() => {
-    if (!authInitialized || redirectionChecked) return;
-    
-    console.log('Login page auth check:', { 
-      isAuthenticated, 
-      isLoading, 
-      authInitialized, 
-      requires2FA
-    });
-    
-    if (!isLoading && isAuthenticated && !requires2FA) {
-      console.log('User is authenticated, redirecting to:', redirectPath);
-      
-    }
-    
-    setRedirectionChecked(true);
-  }, [isLoading, isAuthenticated, router, redirectPath, authInitialized, requires2FA, redirectionChecked]);
+// Update the useEffect for redirection
+useEffect(() => {
+  if (!authInitialized || isLoading) return;
+  
+  if (isAuthenticated && !requires2FA) {
+    console.log('Redirecting to:', redirectPath);
+    router.push(redirectPath);
+  }
+}, [isAuthenticated, isLoading, requires2FA, authInitialized, redirectPath, router]);
   
   if (!authInitialized || isLoading) {
     return (

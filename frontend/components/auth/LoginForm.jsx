@@ -6,6 +6,7 @@ import { useAuth } from '@/providers/auth-providers';
 import { useRouter } from 'next/navigation';
 import { Loader, AlertCircle } from 'lucide-react';
 import TwoFactorVerification from './TwoFactorVerification';
+import GoogleSignInButton from './GoogleSignInButton';
 
 // Email validation regex
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -77,34 +78,33 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
   };
 
   // Handle normal login (first step)
-  const handleLogin = async (e) => {
-    e.preventDefault();
+ // In LoginForm.jsx - update the handleLogin function
+const handleLogin = async (e) => {
+  e.preventDefault();
+  
+  if (!validateForm()) {
+    return;
+  }
+
+  try {
+    setIsLoading(true);
+    setError(null);
     
-    // Validate form
-    if (!validateForm()) {
-      return;
+    const response = await login(email, password);
+    
+    // Handle 2FA requirement
+    if (response.requires2FA) {
+      setShowingTwoFactor(true);
+    } else {
+      // After successful login without 2FA, redirect immediately
+      router.push(redirectPath);
     }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      const response = await login(email, password);
-      
-      // Handle 2FA requirement - set flag to show 2FA form
-      if (response.requires2FA) {
-        setShowingTwoFactor(true);
-      }else{
-        setLocalIsAuthenticated(true)
-      }
-    } catch (err) {
-      setError(err.message || 'Failed to log in. Please check your credentials.');
-    } finally {
-      
-
-      setIsLoading(false);
-    }
-  };
+  } catch (err) {
+    setError(err.message || 'Failed to log in. Please check your credentials.');
+  } finally {
+    setIsLoading(false);
+  }
+};
   
   // Handle 2FA verification success
   const handle2FAVerificationSuccess = () => {
@@ -220,7 +220,23 @@ const LoginForm = ({ redirectPath = '/dashboard' }) => {
           </button>
         </div>
       </form>
+      <div className="relative mt-6">
+      <div className="absolute inset-0 flex items-center">
+        <div className="w-full border-t border-gray-300"></div>
+      </div>
+      <div className="relative flex justify-center text-sm">
+        <span className="px-2 bg-white text-gray-500">
+          Or continue with
+        </span>
+      </div>
     </div>
+    
+    <div className="mt-6">
+      <GoogleSignInButton />
+    </div>
+  </div>
+ 
+    
   );
 };
 

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/providers/auth-providers';
 import { resetPassword } from '@/lib/api/auth';
 import { Loader, AlertCircle, Check, Eye, EyeOff } from 'lucide-react';
 
@@ -11,6 +12,7 @@ const ResetPasswordForm = ({ token }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const { updateUserData } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
@@ -21,43 +23,51 @@ const ResetPasswordForm = ({ token }) => {
   const hasNumber = /\d/.test(password);
   const isPasswordStrong = hasMinLength && hasLetter && hasNumber;
   
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+// In ResetPasswordForm.jsx - update the handleSubmit function
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  // Validate inputs (keep your existing validation code)
+  
+  try {
+    setIsLoading(true);
+    setError(null);
     
-    // Validate inputs
-    if (!password || !confirmPassword) {
-      setError('Please fill in all required fields');
-      return;
-    }
+    // Call the resetPassword API
+    const response = await resetPassword(token, password);
     
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-    
-    if (!isPasswordStrong) {
-      setError('Please create a stronger password');
-      return;
-    }
-    
-    try {
-      setIsLoading(true);
-      setError(null);
+    // The server should return an authenticated session
+    // Let's update auth context directly to handle this new session
+    if (response && response.data && response.data.user) {
+      // Access the auth context to update it
+      // You'll need to import useAuth
       
-      await resetPassword(token, password);
+      
+      // Update the auth context with the new user data
+      updateUserData(response.data.user);
+      
+      // Show success message
       setSuccess(true);
       
-      // Redirect to login after a short delay
+      // Redirect to dashboard instead of login page
+      setTimeout(() => {
+        router.push('/dashboard');
+      }, 3000);
+    } else {
+      // If the response doesn't include user data, redirect to login
+      setSuccess(true);
       setTimeout(() => {
         router.push('/login');
       }, 3000);
-      
-    } catch (err) {
-      setError(err.message || 'Failed to reset password. The link may have expired.');
-    } finally {
-      setIsLoading(false);
     }
-  };
+    
+  } catch (err) {
+    setError(err.message || 'Failed to reset password. The link may have expired.');
+  } finally {
+    setIsLoading(false);
+  }
+};
   
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);

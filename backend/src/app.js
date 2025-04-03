@@ -10,7 +10,12 @@ const hpp = require('hpp');
 const mongoose = require('mongoose');
 const { csrfProtection } = require('./middleware/cookie-auth');
 const { rateLimit } = require('express-rate-limit');
-require('dotenv').config();
+require('dotenv').config();const passport = require('passport');
+const { setupGoogleAuth } = require('./services/auth/google-auth');
+
+
+
+// ... rest of your app code
 
 // Import routes
 const authRoutes = require('./api/auth/routes');
@@ -33,6 +38,10 @@ const securityLogger = require('./services/logging/security-logger');
 
 // Create Express app
 const app = express();
+
+// Initialize passport
+app.use(passport.initialize());
+setupGoogleAuth();
 
 // Set security HTTP headers with enhanced Helmet configuration
 app.use(helmet({
