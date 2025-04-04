@@ -115,35 +115,63 @@ export const logout = async (): Promise<{ status: string; message: string }> => 
   }
 };
 
+// lib/api/auth.ts
 export const getCsrfToken = async (fetchNew = false): Promise<string | null> => {
-  if (typeof document === 'undefined') return null; // Server-side check
+  // Check if we're in the browser
+  if (typeof document === 'undefined') return null;
   
-  // First check for token in meta tag
-  const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-  if (metaToken) return metaToken;
+  // Check for token in cookies
+  let csrfToken: string | null = null;
   
-  // Then check cookies
-  const cookieToken = document.cookie
+  // Check for token in cookie with various possible names
+  const cookieTokenXSRF = document.cookie
     .split('; ')
-    .find(row => row.startsWith('XSRF-TOKEN='))
-    ?.split('=')[1];
+    .find(row => row.startsWith('XSRF-TOKEN='));
     
-  if (cookieToken) return decodeURIComponent(cookieToken);
+  const cookieTokenCSRF = document.cookie
+    .split('; ')
+    .find(row => row.startsWith('csrf_token='));
+    
+  if (cookieTokenXSRF) {
+    csrfToken = decodeURIComponent(cookieTokenXSRF.split('=')[1]);
+  } else if (cookieTokenCSRF) {
+    csrfToken = decodeURIComponent(cookieTokenCSRF.split('=')[1]);
+  }
   
-  // Fetch a new token if requested and not found
+  // If token exists, return it
+  if (csrfToken) {
+    console.log('Found CSRF token in cookies');
+    return csrfToken;
+  }
+  
+  // If no token and fetchNew is true, fetch a new token
   if (fetchNew) {
     try {
-      await apiClient.get('/auth/csrf-token', { withCredentials: true });
+      console.log('Fetching new CSRF token');
+      const response = await apiClient.get('/auth/csrf-token');
       
-      // Check for token in cookies after fetching
-      const newToken = document.cookie
+      // Check if the token is in the response headers
+      const headerToken = response.headers['x-csrf-token'];
+      if (headerToken) {
+        console.log('Received new CSRF token from headers');
+        return headerToken;
+      }
+      
+      // Check if token is in cookies after the request
+      const newCookieToken = document.cookie
         .split('; ')
-        .find(row => row.startsWith('XSRF-TOKEN='))
-        ?.split('=')[1];
+        .find(row => row.startsWith('XSRF-TOKEN=') || row.startsWith('csrf_token='));
         
-      if (newToken) return decodeURIComponent(newToken);
+      if (newCookieToken) {
+        console.log('Received new CSRF token in cookie');
+        return decodeURIComponent(newCookieToken.split('=')[1]);
+      }
+      
+      console.warn('No CSRF token found after request');
+      return null;
     } catch (error) {
-      console.error('Failed to fetch CSRF token:', error);
+      console.error('Error fetching CSRF token:', error);
+      return null;
     }
   }
   
@@ -259,16 +287,62 @@ export const setup2FA = async (): Promise<{ data: { qrCodeUrl: string, secretKey
 };
 
 // Verify and enable 2FA
+// In lib/api/auth.ts
 export const verify2FA = async (code: string): Promise<{ data: { recoveryCodes: string[] } }> => {
   // Basic validation for 2FA code
   if (!/^\d{6}$/.test(code)) {
     throw new Error('Please enter a valid 6-digit verification code');
   }
   
-  const response = await apiClient.post('/auth/2fa/verify', { code });
-  return handleApiResponse(response);
-};
+  try {
+    console.log('Sending 2FA verification code:', code);
+    
+    // Get CSRF token
+    let csrfToken = '';
+    if (typeof document !== 'undefined') {
+      const csrfCookie = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('csrf_token=') || row.startsWith('XSRF-TOKEN='));
+        
+      if (csrfCookie) {
+        csrfToken = decodeURIComponent(csrfCookie.split('=')[1]);
+        console.log('Using CSRF token for verification:', csrfToken);
+      } else {
+        console.warn('No CSRF token found for verification');
+      }
+    }
+    
+    // Include CSRF token in headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken;
+    }
 
+    console.log('Verification request headers:', headers);
+    
+    // Make the verification request
+    const response = await apiClient.post('/auth/2fa/verify', { code }, {
+      headers,
+      withCredentials: true
+    });
+    
+    console.log('Verification response:', response.data);
+    
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error('2FA verification error:', error);
+    
+    if (error) {
+      console.error('Response status:', error);
+      console.error('Response data:', error);
+    }
+    
+    throw error;
+  }
+};
 // Disable 2FA
 export const disable2FA = async (): Promise<{ status: string; message: string }> => {
   const response = await apiClient.post('/auth/2fa/disable');

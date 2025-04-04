@@ -447,8 +447,19 @@ exports.getTwoFactorStatus = async (req, res, next) => {
 
 exports.setupTwoFactor = async (req, res, next) => {
   try {
+    
     const userId = req.user.id;
     const email = req.user.email;
+    console.log('2FA Setup Request:', {
+          userId: req.user?.id || 'No user ID',
+          isAuthenticated: !!req.user,
+          userRole: req.user?.role || 'No role',
+          headers: {
+            'content-type': req.headers['content-type'],
+            'authorization': req.headers['authorization'] ? 'Present' : 'Missing',
+            'cookie': req.headers['cookie'] ? 'Present' : 'Missing'
+          }
+        });
     
     const { secret, qrCodeUrl, recoveryCodes } = await twoFactorService.generateTotpSecret(userId, email);
     
@@ -526,8 +537,15 @@ exports.googleAuthCallback = async (req, res, next) => {
 
 exports.verifyAndEnableTwoFactor = async (req, res, next) => {
   try {
+
     const userId = req.user.id;
     const { code } = req.body;
+
+    console.log('2FA Verification Request:', {
+      userId: req.user?.id,
+      hasCode: !!req.body.code,
+      csrfToken: req.headers['x-csrf-token'] ? 'Present' : 'Missing'
+    });
     
     await twoFactorService.verifyAndEnableTwoFactor(userId, code);
     

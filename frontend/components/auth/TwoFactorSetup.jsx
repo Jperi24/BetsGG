@@ -5,6 +5,10 @@ import { setup2FA, verify2FA } from '@/lib/api/auth';
 import { Loader, AlertCircle, Check, ArrowRight, ArrowLeft } from 'lucide-react';
 import RecoveryCodeDisplay from './RecoveryCodeDisplay';
 
+
+
+
+
 const TwoFactorSetup = ({ onComplete }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -14,48 +18,81 @@ const TwoFactorSetup = ({ onComplete }) => {
   const [recoveryCodes, setRecoveryCodes] = useState([]);
   
   // Load 2FA setup data when component mounts
-  useEffect(() => {
-    const loadSetupData = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        
-        const response = await setup2FA();
-        setSetupData(response.data);
-        
-      } catch (err) {
-        setError(err.message || 'Failed to start 2FA setup. Please try again.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    loadSetupData();
-  }, []);
-  
-  // Handle verification code submission
-  const handleVerify = async (e) => {
-    e.preventDefault();
-    
-    if (!verificationCode || verificationCode.length !== 6) {
-      setError('Please enter a valid 6-digit verification code');
-      return;
-    }
-    
+// In frontend/components/auth/TwoFactorSetup.jsx
+// In your useEffect within TwoFactorSetup.jsx
+useEffect(() => {
+  const loadSetupData = async () => {
     try {
       setIsLoading(true);
       setError(null);
       
-      const response = await verify2FA(verificationCode);
-      setRecoveryCodes(response.data.recoveryCodes);
-      setCurrentStep(3);
+      // Log current cookies
+      console.log("Cookies before request:", document.cookie);
       
+      // Check for auth token
+      const hasAuthToken = document.cookie.includes('auth_token=');
+      console.log("Has auth token:", hasAuthToken);
+      
+      // This is the important change - use the imported function
+      const response = await setup2FA();
+      console.log("2FA setup response:", response);
+      
+      setSetupData(response.data);
     } catch (err) {
-      setError(err.message || 'Failed to verify code. Please try again.');
+      console.error('Setup Error:', err);
+      setError(err.message || 'Failed to start 2FA setup. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
+  
+  loadSetupData();
+}, []);
+
+  // Handle verification code submission
+// In components/auth/TwoFactorSetup.jsx
+const handleVerify = async (e) => {
+  e.preventDefault();
+  
+  if (!verificationCode || verificationCode.length !== 6) {
+    setError('Please enter a valid 6-digit verification code');
+    return;
+  }
+  
+  try {
+    setIsLoading(true);
+    setError(null);
+    
+    console.log('Submitting verification code:', verificationCode);
+    
+    // Also log cookies at this point
+    console.log('Cookies before verification:', document.cookie);
+    
+    // Get CSRF token
+    const csrfToken = document.cookie.split('; ')
+      .find(row => row.startsWith('csrf_token='))
+      ?.split('=')[1];
+    console.log("CSRF token for verification:", csrfToken);
+    
+    const response = await verify2FA(verificationCode);
+    console.log('Verification successful:', response);
+    
+    setRecoveryCodes(response.data.recoveryCodes);
+    setCurrentStep(3);
+    
+  } catch (err) {
+    console.error('Verification error:', err);
+    
+    // More specific error message based on the error
+    if (err.response?.status === 403) {
+      setError('Permission denied. There may be an issue with your session or CSRF token.');
+    } else {
+      setError(err.message || 'Failed to verify code. Please try again.');
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
   
   // Format verification code input (add space after 3 digits)
   const formatVerificationCode = (value) => {

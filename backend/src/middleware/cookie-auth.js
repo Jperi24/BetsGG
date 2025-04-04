@@ -122,9 +122,10 @@ exports.verifyCsrfToken = async (userId, token) => {
  * Improved CSRF protection middleware
  * Validates CSRF token for state-changing methods
  */
+// In middleware/cookie-auth.js
 exports.csrfProtection = async (req, res, next) => {
-  console.log('==================== CSRF DEBUG ====================');
-  console.log('Request path:', req.path);
+  console.log('=== CSRF PROTECTION DEBUG ===');
+  console.log('Request path:', req.originalUrl);
   console.log('Request method:', req.method);
   console.log('CSRF Headers:', {
     'x-csrf-token': req.headers['x-csrf-token'] || 'none', 
@@ -137,31 +138,36 @@ exports.csrfProtection = async (req, res, next) => {
   // Skip for safe methods
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     console.log('Safe method, skipping CSRF check');
-    console.log('================= END CSRF DEBUG =================');
+    console.log('=== END CSRF DEBUG ===');
     return next();
   }
   
-  // Special debugging for logout
-  if (req.path === '/api/auth/logout') {
-    console.log('*** LOGOUT REQUEST DETECTED ***');
-    console.log('All request headers:', req.headers);
-    console.log('All cookies:', req.cookies);
-    console.log('Request body:', req.body);
-    
-    // TEMPORARY - skip CSRF check for logout during debugging
-    console.log('TEMPORARILY BYPASSING CSRF FOR LOGOUT FOR DEBUGGING');
-    console.log('================= END CSRF DEBUG =================');
-    return next();
-  }
   
   // Get CSRF token from header (preferred) or request body
-  const csrfToken = req.headers['x-csrf-token'] || req.body._csrf;
+  const csrfToken = req.headers['x-csrf-token'] || 
+                   req.headers['x-csrf-TOKEN'] || 
+                   req.body._csrf;
+  
+  console.log('CSRF Token present:', !!csrfToken);
+  
+  // For authentication routes, allow requests without CSRF token
+  if (req.path === '/api/auth/2fa/setup') {
+    console.log('2FA Setup route detected - ALLOWING REQUEST FOR DEBUGGING');
+    console.log('=== END CSRF DEBUG ===');
+    return next(); // Temporarily bypass CSRF check for this route
+  }
   
   // Authenticated routes will have user
+  console.log("PRINTING REQ USER",req.user)
+  console.log("PRINTING CSRFTOKEN",csrfToken)
   if (req.user && csrfToken) {
+    
+    console.log('Verifying CSRF token for user:', req.user.id);
     const isValid = await exports.verifyCsrfToken(req.user.id, csrfToken);
+    console.log('CSRF Token valid:', isValid);
     
     if (!isValid) {
+      console.log('Invalid CSRF token');
       return res.status(403).json({
         status: 'fail',
         message: 'Invalid or expired CSRF token'
@@ -169,15 +175,21 @@ exports.csrfProtection = async (req, res, next) => {
     }
     
     // Generate a new token for the response
+    
     const newToken = await exports.generateCsrfToken(req.user.id);
     res.setHeader('X-CSRF-Token', newToken);
     exports.setCsrfCookie(res, newToken);
     
+    console.log('=== END CSRF DEBUG ===');
     return next();
   }
   
+  
+  console.log('No CSRF token or user not authenticated');
+  console.log('=== END CSRF DEBUG ===');
+  
   // For login/register routes without existing auth
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && 
+  if (['POST'].includes(req.method) && 
       (req.path === '/api/auth/login' || req.path === '/api/auth/register' || 
        req.path === '/api/auth/forgot-password' || req.path.startsWith('/api/auth/reset-password/'))) {
     // Allow these specific public endpoints

@@ -70,27 +70,37 @@ const apiClient = axios.create({
 });
 
 // Enhanced request interceptor with robust CSRF protection
+// In frontend/lib/api/index.ts, modify the request interceptor
 apiClient.interceptors.request.use(
   (config) => {
     // Add CSRF token for state-changing methods
     if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
-      const token = getCsrfToken(); // This is now synchronous
-      if (token) {
-        // Use both header formats to ensure compatibility
-        config.headers['X-CSRF-Token'] = token; // Match the case in your backend
-        config.headers['X-CSRF-TOKEN'] = token; // Alternative format
-      } else if (process.env.NODE_ENV === 'development') {
-        console.warn('CSRF token not found for state-changing request');
+      let csrfToken = '';
+      
+      // Get token from cookie
+      if (typeof document !== 'undefined') {
+        const csrfCookie = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('csrf_token=') || row.startsWith('XSRF-TOKEN='));
+          
+        if (csrfCookie) {
+          csrfToken = decodeURIComponent(csrfCookie.split('=')[1]);
+          console.log('Using CSRF token from cookie:', csrfToken);
+        }
+      }
+      
+      // Set token in headers
+      if (csrfToken) {
+        config.headers['X-CSRF-Token'] = csrfToken;
+        config.headers['X-CSRF-TOKEN'] = csrfToken; // Add both formats to be safe
+      } else {
+        console.warn('No CSRF token found for state-changing request');
       }
     }
     
     return config;
   },
   (error) => {
-    // Safer error handling without logging sensitive data
-    if (process.env.NODE_ENV === 'development') {
-      console.error(`API request error: ${error.message}`);
-    }
     return Promise.reject(error);
   }
 );

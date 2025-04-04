@@ -10,13 +10,21 @@ const notificationService = require('../services/notification');
  * Protect routes - Authentication middleware
  * Verifies JWT token from HTTP-only cookie and adds user to request
  */
+// In backend/src/middleware/auth.js
 exports.protect = async (req, res, next) => {
+  console.log('=== AUTH DEBUG ===');
+  console.log('Request path:', req.originalUrl);
+  console.log('Auth cookies:', {
+    authToken: req.cookies.auth_token ? 'Present' : 'Missing',
+    sessionId: req.cookies.session_id ? 'Present' : 'Missing'
+  });
   
   try {
     // 1) Get token from cookies
     const token = req.cookies.auth_token;
 
     if (!token) {
+      console.log('No auth token found in cookies');
       return res.status(401).json({
         status: 'fail',
         message: 'You are not logged in. Please log in to get access.'
@@ -24,12 +32,19 @@ exports.protect = async (req, res, next) => {
     }
 
     // 2) Verify token
+    console.log('Verifying JWT token...');
     const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
+    console.log('Token decoded successfully:', { 
+      userId: decoded.id,
+      tokenVersion: decoded.tokenVersion,
+      pending2FA: decoded.pending2FA || false
+    });
 
     // 3) Check if user still exists
     const currentUser = await User.findById(decoded.id);
     
     if (!currentUser) {
+      console.log('User not found in database');
       return res.status(401).json({
         status: 'fail',
         message: 'The user belonging to this token no longer exists.'
@@ -38,14 +53,25 @@ exports.protect = async (req, res, next) => {
     
     // Check if token version matches current user's version
     if (decoded.tokenVersion !== currentUser.tokenVersion) {
+      console.log('Token version mismatch', { 
+        tokenVersion: decoded.tokenVersion, 
+        userTokenVersion: currentUser.tokenVersion 
+      });
       return res.status(401).json({
         status: 'fail',
         message: 'Token is no longer valid. Please log in again.'
       });
     }
 
+    // Log user details
+    console.log('User authenticated:', {
+      userId: currentUser.id,
+      role: currentUser.role
+    });
+
     // 4) Check if this is a temporary token waiting for 2FA
     if (decoded.pending2FA) {
+      console.log('Token has pending2FA flag');
       // Only allow access to the 2FA verification route
       if (req.originalUrl !== '/api/auth/verify-2fa') {
         return res.status(401).json({
@@ -55,11 +81,15 @@ exports.protect = async (req, res, next) => {
       }
     }
 
-    // 5) Check if session is valid (if using sessions)
+    // 5) Check if session is valid
     const sessionId = req.cookies.session_id;
     if (sessionId) {
+      console.log('Checking session validity...');
       const session = await sessionService.getSession(sessionId);
+      console.log('Session found:', !!session);
+      
       if (!session || session.userId !== currentUser.id.toString()) {
+        console.log('Invalid session');
         // Invalid session, clear cookies
         res.clearCookie('auth_token');
         res.clearCookie('session_id');
@@ -71,14 +101,18 @@ exports.protect = async (req, res, next) => {
         });
       }
       
-      // Attach session to request for potential use in controllers
+      // Attach session to request
       req.session = session;
     }
 
     // GRANT ACCESS TO PROTECTED ROUTE
     req.user = currentUser;
+    console.log('Auth middleware passed successfully');
+    console.log('=== END AUTH DEBUG ===');
     next();
   } catch (error) {
+    console.error('Auth middleware error:', error);
+    
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         status: 'fail',

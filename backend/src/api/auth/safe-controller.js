@@ -478,6 +478,8 @@ exports.setupTwoFactor = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const email = req.user.email;
+
+    
     
     // Generate TOTP secret and QR code
     const { secret, qrCodeUrl, recoveryCodes } = await twoFactorService.generateTotpSecret(userId, email);
