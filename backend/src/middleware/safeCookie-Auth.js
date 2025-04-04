@@ -7,6 +7,16 @@ const redis = require('../utils/redis');
 const crypto = require('crypto');
 
 /**
+ * Sets JWT token as HTTP-only cookie
+ * @param {Object} res - Express response object
+ * @param {string} token - JWT token
+ * @param {Object} options - Cookie options
+ */
+
+
+
+
+/**
  * Clears auth cookies with consistent settings
  * @param {Object} res - Express response object
  */
@@ -112,6 +122,7 @@ exports.setCsrfCookie = (res, token) => {
  * @param {string} token - CSRF token to verify
  * @returns {boolean} - Whether token is valid
  */
+// In middleware/cookie-auth.js
 exports.verifyCsrfToken = async (userId, token) => {
   if (!userId || !token) return false;
   
@@ -128,115 +139,87 @@ exports.verifyCsrfToken = async (userId, token) => {
 };
 
 /**
- * Update the generateSessionCsrfToken function to ensure tokens are properly stored
- * @param {string} sessionId - Session ID
- * @returns {string} - CSRF token
+ * Improved CSRF protection middleware
+ * Validates CSRF token for state-changing methods
  */
-exports.generateSessionCsrfToken = async (sessionId) => {
-  if (!sessionId) {
-    console.error('No session ID provided when generating session CSRF token');
-    return crypto.randomBytes(64).toString('hex'); // Return a token anyway
-  }
-  
-  console.log(`Generating CSRF token for session ${sessionId}`);
-  const csrfToken = crypto.randomBytes(64).toString('hex');
-  
-  // Store in Redis with proper key format
-  const key = `csrf:session:${sessionId}:${csrfToken}`;
-  try {
-    await redis.setAsync(key, '1', 'EX', 28800); // 8 hours
-    console.log(`Stored session CSRF token with key: ${key}`);
-    return csrfToken;
-  } catch (error) {
-    console.error('Error storing session CSRF token in Redis:', error);
-    return csrfToken; // Return token anyway to not break the flow
-  }
-};
-
-/**
- * Update the verifySessionCsrfToken function with better debugging
- * @param {string} sessionId - Session ID
- * @param {string} token - CSRF token
- * @returns {boolean} - Whether token is valid
- */
-exports.verifySessionCsrfToken = async (sessionId, token) => {
-  if (!sessionId || !token) {
-    console.log('Missing session ID or token for CSRF validation');
-    return false;
-  }
-  
-  const key = `csrf:session:${sessionId}:${token}`;
-  console.log(`Verifying session CSRF token with key: ${key}`);
-  
-  try {
-    const exists = await redis.getAsync(key);
-    console.log(`CSRF token validation result: ${exists === '1' ? 'Valid' : 'Invalid'}`);
-    
-    if (exists === '1') {
-      console.log('Token found and validated successfully');
-      // Don't invalidate the token after verification for 2FA operations
-      // as the user might need multiple attempts
-      return true;
-    } else {
-      console.log('Token not found or invalid');
-      return false;
-    }
-  } catch (error) {
-    console.error('Error verifying session CSRF token:', error);
-    return false;
-  }
-};
-
-
-// src/middleware/cookie-auth.js - Direct bypass for 2FA routes
+// In middleware/cookie-auth.js
+// backend/src/middleware/cookie-auth.js
+// Improved CSRF middleware that handles 2FA routes securely
 
 exports.csrfProtection = async (req, res, next) => {
-  console.log(`CSRF protection for ${req.method} ${req.path}`);
-  
   // Skip for safe methods
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-    console.log('Skipping CSRF check for safe method');
-    return next();
-  }
-  
-  // CRITICAL CHANGE: Skip CSRF for 2FA routes - ALWAYS bypass these routes
-  if (req.path === '/api/auth/2fa/setup' || req.path === '/api/auth/2fa/verify') {
-    console.log('Bypassing CSRF protection for 2FA route');
     return next();
   }
   
   // Get CSRF token from header or request body
   const csrfToken = req.headers['x-csrf-token'] || 
-                   req.headers['x-csrf-token'] || 
+                   req.headers['x-csrf-TOKEN'] || 
                    req.body._csrf;
   
-  console.log(`CSRF token from request: ${csrfToken ? 'Present' : 'Missing'}`);
+  // Special handling for 2FA routes - use cookie/session-based validation
+  // instead of user-based validation
+  if (
+    req.path === '/api/auth/2fa/setup' || 
+    req.path === '/api/auth/2fa/verify'
+  ) {
+    // For 2FA routes, validate the token using the session ID if available
+    const sessionId = req.cookies.session_id;
+
+    
+    
+    
+    if (sessionId && csrfToken) {
+      // Verify against a session-based CSRF token
+      // This would require storing CSRF tokens by session ID in Redis
+      const isValid = await exports.verifySessionCsrfToken(sessionId, csrfToken);
+      
+      if (!isValid) {
+        console.log("NOT VALID")
+        return res.status(403).json({
+          status: 'fail',
+          message: 'Invalid or expired CSRF token for 2FA operation'
+        });
+      }
+      
+      // Generate a new token for the response
+      const newToken = await exports.generateSessionCsrfToken(sessionId);
+      res.setHeader('X-CSRF-Token', newToken);
+      exports.setCsrfCookie(res, newToken);
+      
+      return next();
+    }
+    
+    // If we have an auth token but not a session ID, allow the request
+    // This is a fallback for scenarios where the session cookie is missing
+    if (req.cookies.auth_token) {
+      return next();
+    }
+  }
   
   // For login/register routes without existing auth
   if (['POST'].includes(req.method) && 
       (req.path === '/api/auth/login' || 
-       req.path === '/api/auth/logout' ||
+         '/api/auth/logout' ||
        req.path === '/api/auth/register' || 
        req.path === '/api/auth/forgot-password' || 
        req.path.startsWith('/api/auth/reset-password/'))) {
-    console.log('Skipping CSRF check for public auth endpoint');
+    // Allow these specific public endpoints without CSRF
     return next();
   }
   
   // Standard CSRF protection for authenticated routes
   if (req.user && csrfToken) {
-    console.log(`Verifying user-based CSRF token for user ID: ${req.user.id}`);
+    console.log("USER ID",req.user.id)
     const isValid = await exports.verifyCsrfToken(req.user.id, csrfToken);
     
     if (!isValid) {
-      console.log('User-based CSRF token validation failed');
       return res.status(403).json({
         status: 'fail',
         message: 'Invalid or expired CSRF token'
       });
     }
     
-    console.log('User-based CSRF token validated successfully');
     // Generate a new token for the response
     const newToken = await exports.generateCsrfToken(req.user.id);
     res.setHeader('X-CSRF-Token', newToken);
@@ -246,39 +229,30 @@ exports.csrfProtection = async (req, res, next) => {
   }
   
   // If we get here, CSRF validation failed
-  console.log('CSRF validation failed, no valid token path found');
   return res.status(403).json({
     status: 'fail',
     message: 'CSRF protection: Token required for this operation'
   });
 };
-/**
- * Add a new function to explicitly set up a session CSRF token
- * This can be called when setting up a session
- * @param {string} sessionId - Session ID
- * @param {Object} res - Express response object
- * @returns {string|null} - CSRF token or null
- */
-exports.initializeSessionCsrfToken = async (sessionId, res) => {
-  if (!sessionId) {
-    console.error('Cannot initialize CSRF token: Missing session ID');
-    return null;
-  }
+
+// New function to verify CSRF tokens by session ID
+exports.verifySessionCsrfToken = async (sessionId, token) => {
+  if (!sessionId || !token) return false;
   
-  try {
-    console.log(`Initializing CSRF token for new session: ${sessionId}`);
-    const token = await exports.generateSessionCsrfToken(sessionId);
-    
-    if (res) {
-      exports.setCsrfCookie(res, token);
-      res.setHeader('X-CSRF-Token', token);
-    }
-    
-    return token;
-  } catch (error) {
-    console.error('Error initializing session CSRF token:', error);
-    return null;
-  }
+  const key = `csrf:session:${sessionId}:${token}`;
+  const exists = await redis.getAsync(key);
+  
+  return exists === '1';
+};
+
+// New function to generate CSRF tokens by session ID
+exports.generateSessionCsrfToken = async (sessionId) => {
+  const csrfToken = crypto.randomBytes(64).toString('hex');
+  
+  const key = `csrf:session:${sessionId}:${csrfToken}`;
+  await redis.setAsync(key, '1', 'EX', 28800); // 8 hours
+  
+  return csrfToken;
 };
 
 /**

@@ -14,6 +14,61 @@ const { v4: uuidv4 } = require('uuid');
 // Helper function to create and send token
 // src/api/auth/controller.js - Update createSendToken function
 
+// const createSendToken = async (user, statusCode, req, res, options = {}) => {
+//   try {
+//     // Generate token based on 2FA status
+//     const token = options.temp2FA 
+//       ? user.generateTempJWT() 
+//       : user.generateJWT();
+    
+//     // Create session with error handling
+//     let sessionId;
+//     try {
+//       // Extract device info from request
+//       sessionId = await sessionService.createSession(user.id, req);
+//     } catch (sessionError) {
+//       console.error('Error creating session:', sessionError);
+//       // Generate a fallback session ID to avoid breaking the login flow
+//       sessionId = uuidv4();
+//     }
+    
+//     // Generate CSRF token for protection against CSRF attacks
+//     const csrfToken = await cookieAuth.generateCsrfToken(user.id);
+    
+//     // Set cookies: auth token (HTTP-only), session ID, and CSRF token
+//     cookieAuth.setTokenCookie(res, token, {
+//       tempToken: options.temp2FA,
+//       sessionId
+//     });
+//     cookieAuth.setCsrfCookie(res, csrfToken);
+    
+//     // Remove sensitive fields from output
+//     user.password = undefined;
+//     user.twoFactorSecret = undefined;
+//     user.twoFactorRecoveryCodes = undefined;
+    
+//     // Return response with user data and auth details
+//     res.status(statusCode).json({
+//       status: 'success',
+//       csrfToken,
+//       sessionId,
+//       requires2FA: user.twoFactorEnabled && options.temp2FA,
+//       tempToken: options.temp2FA ? token : undefined,
+//       data: {
+//         user
+//       }
+//     });
+//   } catch (error) {
+//     console.error('Error in createSendToken:', error);
+//     res.status(500).json({
+//       status: 'error',
+//       message: 'An error occurred during authentication. Please try again.'
+//     });
+//   }
+// };
+
+// Update in src/api/auth/controller.js - createSendToken function
+
 const createSendToken = async (user, statusCode, req, res, options = {}) => {
   try {
     // Generate token based on 2FA status
@@ -33,14 +88,23 @@ const createSendToken = async (user, statusCode, req, res, options = {}) => {
     }
     
     // Generate CSRF token for protection against CSRF attacks
-    const csrfToken = await cookieAuth.generateCsrfToken(user.id);
+    // Update to use session-based CSRF token for consistency
+    let csrfToken;
     
-    // Set cookies: auth token (HTTP-only), session ID, and CSRF token
+    if (options.temp2FA) {
+      // For 2FA flow, use session-based CSRF token
+      csrfToken = await cookieAuth.initializeSessionCsrfToken(sessionId, res);
+    } else {
+      // For normal flow, use user-based CSRF token
+      csrfToken = await cookieAuth.generateCsrfToken(user.id);
+      cookieAuth.setCsrfCookie(res, csrfToken);
+    }
+    
+    // Set cookies: auth token (HTTP-only), session ID
     cookieAuth.setTokenCookie(res, token, {
       tempToken: options.temp2FA,
       sessionId
     });
-    cookieAuth.setCsrfCookie(res, csrfToken);
     
     // Remove sensitive fields from output
     user.password = undefined;
