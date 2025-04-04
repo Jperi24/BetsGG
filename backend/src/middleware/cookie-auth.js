@@ -12,6 +12,7 @@ const crypto = require('crypto');
  * @param {string} token - JWT token
  * @param {Object} options - Cookie options
  */
+// In middleware/cookie-auth.js
 exports.setTokenCookie = (res, token, options = {}) => {
   // Default cookie options - secure and HTTP-only
   const cookieOptions = {
@@ -21,18 +22,18 @@ exports.setTokenCookie = (res, token, options = {}) => {
     path: '/',
     maxAge: options.tempToken 
       ? 5 * 60 * 1000  // 5 minutes for temp 2FA tokens
-      : 7 * 24 * 60 * 60 * 1000, // 7 days for regular tokens (reduced from 30 days)
+      : 7 * 24 * 60 * 60 * 1000, // 7 days for regular tokens
     ...options
   };
 
   // Set auth token as HTTP-only cookie
   res.cookie('auth_token', token, cookieOptions);
   
-  // Also set the session ID if provided
+  // Also set the session ID with httpOnly:true for security
   if (options.sessionId) {
     res.cookie('session_id', options.sessionId, {
       ...cookieOptions,
-      httpOnly: false // Session ID can be accessible to JS for better UX
+      httpOnly: true // Make session ID HTTP-only for better security
     });
   }
 };
@@ -101,6 +102,7 @@ exports.setCsrfCookie = (res, token) => {
  * @param {string} token - CSRF token to verify
  * @returns {boolean} - Whether token is valid
  */
+// In middleware/cookie-auth.js
 exports.verifyCsrfToken = async (userId, token) => {
   if (!userId || !token) return false;
   
@@ -108,9 +110,8 @@ exports.verifyCsrfToken = async (userId, token) => {
   const exists = await redis.getAsync(key);
   
   if (exists === '1') {
-    // Implement token rotation - after validation, invalidate the token
-    // For strict single-use tokens, uncomment the line below
-    // await redis.delAsync(key);
+    // Always invalidate token after use for security-critical operations
+    await redis.delAsync(key);
     return true;
   }
   

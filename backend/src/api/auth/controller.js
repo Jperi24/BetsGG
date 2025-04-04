@@ -465,19 +465,62 @@ exports.setupTwoFactor = async (req, res, next) => {
   }
 };
 // Handle Google OAuth callback
+// Fix for the googleAuthCallback function in src/api/auth/controller.js
+// Modified createSendToken for Google Auth
+const createSendTokenForOAuth = async (user, req, res) => {
+  try {
+    // Generate token
+    const token = user.generateJWT();
+    
+    // Create session
+    let sessionId;
+    try {
+      sessionId = await sessionService.createSession(user.id, req);
+    } catch (sessionError) {
+      console.error('Error creating session:', sessionError);
+      sessionId = uuidv4();
+    }
+    
+    // Generate CSRF token
+    const csrfToken = await cookieAuth.generateCsrfToken(user.id);
+    
+    // Set cookies: auth token (HTTP-only), session ID, and CSRF token
+    cookieAuth.setTokenCookie(res, token, {
+      sessionId
+    });
+    cookieAuth.setCsrfCookie(res, csrfToken);
+    
+    // For OAuth flow, we don't send a JSON response, only set cookies
+    // The redirect will happen after this function
+  } catch (error) {
+    console.error('Error in createSendTokenForOAuth:', error);
+    throw error; // Let the calling function handle the error
+  }
+};
+
+// Modified Google Auth Callback
 exports.googleAuthCallback = async (req, res, next) => {
   try {
     // User will be attached to req by passport
     const user = req.user;
     
-    // Generate session and send tokens
-    await createSendToken(user, 200, req, res);
+    if (!user) {
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=google-auth-failed&reason=no-user`);
+    }
     
-    // Redirect to frontend
-    res.redirect(`${process.env.FRONTEND_URL}/auth/success`);
+    try {
+      // Use special OAuth token function that doesn't send a response
+      await createSendTokenForOAuth(user, req, res);
+      
+      // Only after tokens are set, redirect to success page
+      return res.redirect(`${process.env.FRONTEND_URL}/auth/success`);
+    } catch (tokenError) {
+      console.error('Token creation error:', tokenError);
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=google-auth-failed&reason=token-error`);
+    }
   } catch (error) {
     console.error('Google auth callback error:', error);
-    res.redirect(`${process.env.FRONTEND_URL}/login?error=google-auth-failed`);
+    return res.redirect(`${process.env.FRONTEND_URL}/login?error=google-auth-failed&reason=general-error`);
   }
 };
 
