@@ -200,26 +200,41 @@ const getUserSessions = async (userId) => {
   }
 };
 
-/**
- * Invalidate a specific session
- * @param {string} sessionId - Session ID
- * @returns {boolean} - Whether session was invalidated
- */
 const invalidateSession = async (sessionId) => {
   try {
-    // Get session to find user ID
-    const sessionJson = await redis.getAsync(`session:${sessionId}`);
-    if (sessionJson) {
-      const session = JSON.parse(sessionJson);
-      
-      // Remove from user's session set
-      if (session.userId) {
-        await redis.sremAsync(`user:sessions:${session.userId}`, sessionId);
-      }
+    if (!sessionId) {
+      console.warn('No session ID provided for invalidation');
+      return false;
     }
     
-    // Delete session
+    console.log(`Attempting to invalidate session: ${sessionId}`);
+    
+    // Get session to find user ID
+    const sessionJson = await redis.getAsync(`session:${sessionId}`);
+    let userId = null;
+    
+    if (sessionJson) {
+      try {
+        const session = JSON.parse(sessionJson);
+        userId = session.userId;
+        console.log(`Found session for user: ${userId}`);
+      } catch (parseError) {
+        console.error('Error parsing session JSON:', parseError);
+      }
+    } else {
+      console.warn(`Session ${sessionId} not found in Redis`);
+    }
+    
+    // Remove from user's session set if we have a userId
+    if (userId) {
+      console.log(`Removing session ${sessionId} from user's session set`);
+      await redis.sremAsync(`user:sessions:${userId}`, sessionId);
+    }
+    
+    // Delete session from Redis
+    console.log(`Deleting session ${sessionId} from Redis`);
     await redis.delAsync(`session:${sessionId}`);
+    
     return true;
   } catch (error) {
     console.error('Error invalidating session:', error);
@@ -235,30 +250,54 @@ const invalidateSession = async (sessionId) => {
  */
 const invalidateAllUserSessions = async (userId, excludeSessionIds = []) => {
   try {
+    if (!userId) {
+      console.warn('No user ID provided for invalidating all sessions');
+      return false;
+    }
+    
+    console.log(`Invalidating all sessions for user ${userId} except: ${excludeSessionIds.join(', ') || 'none'}`);
+    
     // Convert exclude list to Set for O(1) lookups
     const excludeSet = new Set(excludeSessionIds);
     
     // Get all session IDs for the user
     const sessionIds = await redis.smembersAsync(`user:sessions:${userId}`);
-    if (!sessionIds || sessionIds.length === 0) return true;
+    
+    if (!sessionIds || sessionIds.length === 0) {
+      console.log(`No sessions found for user ${userId}`);
+      return true;
+    }
+    
+    console.log(`Found ${sessionIds.length} sessions for user ${userId}`);
     
     // Process each session
+    let invalidatedCount = 0;
+    
     for (const id of sessionIds) {
       if (!excludeSet.has(id)) {
+        console.log(`Deleting session ${id}`);
         // Delete session
         await redis.delAsync(`session:${id}`);
+        invalidatedCount++;
+      } else {
+        console.log(`Preserving excluded session ${id}`);
       }
     }
     
-    // Update user's session set
-    // First delete the entire set
-    await redis.delAsync(`user:sessions:${userId}`);
-    
-    // Then add back excluded sessions if any
+    // Update user's session set to contain only excluded sessions
     if (excludeSessionIds.length > 0) {
+      // First clear all sessions
+      await redis.delAsync(`user:sessions:${userId}`);
+      // Then add back excluded sessions
       await redis.saddAsync(`user:sessions:${userId}`, ...excludeSessionIds);
+      console.log(`Restored ${excludeSessionIds.length} excluded sessions to user's session set`);
+    } else {
+      // If no sessions to exclude, just delete the entire set
+      await redis.delAsync(`user:sessions:${userId}`);
+      console.log(`Removed all sessions for user ${userId}`);
     }
     
+    console.log(`Invalidated ${invalidatedCount} sessions for user ${userId}`);
     return true;
   } catch (error) {
     console.error('Error invalidating user sessions:', error);

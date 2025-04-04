@@ -137,13 +137,29 @@ exports.protect = async (req, res, next) => {
  */
 exports.restrictTo = (...roles) => {
   return (req, res, next) => {
-    // roles is an array ['admin', 'lead-guide']
+    // First check if user exists and is authenticated
+    if (!req.user) {
+      console.error('restrictTo middleware: req.user is undefined');
+      return res.status(401).json({
+        status: 'fail',
+        message: 'Authentication required. Please log in.'
+      });
+    }
+
+    // Debug log to see what's happening
+    console.log(`Authorization check - User role: ${req.user.role}, Required roles: ${roles.join(', ')}`);
+    
+    // Check if user role is in the allowed roles
     if (!roles.includes(req.user.role)) {
+      console.log(`Authorization failed - User role ${req.user.role} not in allowed roles: ${roles.join(', ')}`);
       return res.status(403).json({
         status: 'fail',
         message: 'You do not have permission to perform this action'
       });
     }
+
+    // Authorization passed
+    console.log('Authorization successful');
     next();
   };
 };

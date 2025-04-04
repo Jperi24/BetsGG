@@ -12,57 +12,77 @@ const crypto = require('crypto');
  * @param {string} token - JWT token
  * @param {Object} options - Cookie options
  */
-// In middleware/cookie-auth.js
+
+
+
+
+/**
+ * Clears auth cookies with consistent settings
+ * @param {Object} res - Express response object
+ */
+exports.clearAuthCookies = (res) => {
+  // Common cookie options to ensure cookies are properly cleared
+  const cookieOptions = {
+    path: '/',
+    expires: new Date(0), // Setting to epoch time forces immediate deletion
+    maxAge: 0, // Alternative way to force deletion
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
+  };
+
+  // Clear auth token cookie - must be httpOnly: true to match how it was set
+  res.clearCookie('auth_token', {
+    ...cookieOptions,
+    httpOnly: true
+  });
+  
+  // Clear session ID cookie - must be httpOnly: true to match how it was set
+  res.clearCookie('session_id', {
+    ...cookieOptions,
+    httpOnly: true
+  });
+  
+  // Clear CSRF token cookie - must be httpOnly: false to match how it was set
+  res.clearCookie('csrf_token', {
+    ...cookieOptions,
+    httpOnly: false
+  });
+  
+  // Also clear alternate CSRF token cookie name if it exists
+  res.clearCookie('XSRF-TOKEN', {
+    ...cookieOptions,
+    httpOnly: false
+  });
+  
+  // Log the cookie clearing action in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log('All auth cookies cleared with options:', cookieOptions);
+  }
+};
+
+// Make sure the setTokenCookie function uses consistent httpOnly settings
 exports.setTokenCookie = (res, token, options = {}) => {
   // Default cookie options - secure and HTTP-only
   const cookieOptions = {
-    httpOnly: true,
+    httpOnly: true, // This is crucial for auth_token
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     path: '/',
     maxAge: options.tempToken 
       ? 5 * 60 * 1000  // 5 minutes for temp 2FA tokens
       : 7 * 24 * 60 * 60 * 1000, // 7 days for regular tokens
-    ...options
   };
 
   // Set auth token as HTTP-only cookie
   res.cookie('auth_token', token, cookieOptions);
   
-  // Also set the session ID with httpOnly:true for security
+  // Set the session ID cookie with the same httpOnly setting
   if (options.sessionId) {
     res.cookie('session_id', options.sessionId, {
       ...cookieOptions,
-      httpOnly: true // Make session ID HTTP-only for better security
+      httpOnly: true // Ensure this is consistent
     });
   }
-};
-
-/**
- * Clears auth cookies
- * @param {Object} res - Express response object
- */
-exports.clearAuthCookies = (res) => {
-  res.clearCookie('auth_token', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-    path: '/'
-  });
-  
-  res.clearCookie('session_id', {
-    httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-    path: '/'
-  });
-  
-  res.clearCookie('csrf_token', {
-    httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-    path: '/'
-  });
 };
 
 /**
@@ -123,51 +143,77 @@ exports.verifyCsrfToken = async (userId, token) => {
  * Validates CSRF token for state-changing methods
  */
 // In middleware/cookie-auth.js
+// backend/src/middleware/cookie-auth.js
+// Improved CSRF middleware that handles 2FA routes securely
+
 exports.csrfProtection = async (req, res, next) => {
-  console.log('=== CSRF PROTECTION DEBUG ===');
-  console.log('Request path:', req.originalUrl);
-  console.log('Request method:', req.method);
-  console.log('CSRF Headers:', {
-    'x-csrf-token': req.headers['x-csrf-token'] || 'none', 
-    'x-csrf-TOKEN': req.headers['x-csrf-TOKEN'] || 'none'
-  });
-  console.log('CSRF Cookies:', {
-    csrf_token: req.cookies.csrf_token || 'none'
-  });
-  
   // Skip for safe methods
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-    console.log('Safe method, skipping CSRF check');
-    console.log('=== END CSRF DEBUG ===');
     return next();
   }
   
-  
-  // Get CSRF token from header (preferred) or request body
+  // Get CSRF token from header or request body
   const csrfToken = req.headers['x-csrf-token'] || 
                    req.headers['x-csrf-TOKEN'] || 
                    req.body._csrf;
   
-  console.log('CSRF Token present:', !!csrfToken);
-  
-  // For authentication routes, allow requests without CSRF token
-  if (req.path === '/api/auth/2fa/setup') {
-    console.log('2FA Setup route detected - ALLOWING REQUEST FOR DEBUGGING');
-    console.log('=== END CSRF DEBUG ===');
-    return next(); // Temporarily bypass CSRF check for this route
+  // Special handling for 2FA routes - use cookie/session-based validation
+  // instead of user-based validation
+  if (
+    req.path === '/api/auth/2fa/setup' || 
+    req.path === '/api/auth/2fa/verify'
+  ) {
+    // For 2FA routes, validate the token using the session ID if available
+    const sessionId = req.cookies.session_id;
+
+    
+    
+    
+    if (sessionId && csrfToken) {
+      // Verify against a session-based CSRF token
+      // This would require storing CSRF tokens by session ID in Redis
+      const isValid = await exports.verifySessionCsrfToken(sessionId, csrfToken);
+      
+      if (!isValid) {
+        console.log("NOT VALID")
+        return res.status(403).json({
+          status: 'fail',
+          message: 'Invalid or expired CSRF token for 2FA operation'
+        });
+      }
+      
+      // Generate a new token for the response
+      const newToken = await exports.generateSessionCsrfToken(sessionId);
+      res.setHeader('X-CSRF-Token', newToken);
+      exports.setCsrfCookie(res, newToken);
+      
+      return next();
+    }
+    
+    // If we have an auth token but not a session ID, allow the request
+    // This is a fallback for scenarios where the session cookie is missing
+    if (req.cookies.auth_token) {
+      return next();
+    }
   }
   
-  // Authenticated routes will have user
-  console.log("PRINTING REQ USER",req.user)
-  console.log("PRINTING CSRFTOKEN",csrfToken)
+  // For login/register routes without existing auth
+  if (['POST'].includes(req.method) && 
+      (req.path === '/api/auth/login' || 
+         '/api/auth/logout' ||
+       req.path === '/api/auth/register' || 
+       req.path === '/api/auth/forgot-password' || 
+       req.path.startsWith('/api/auth/reset-password/'))) {
+    // Allow these specific public endpoints without CSRF
+    return next();
+  }
+  
+  // Standard CSRF protection for authenticated routes
   if (req.user && csrfToken) {
-    
-    console.log('Verifying CSRF token for user:', req.user.id);
+    console.log("USER ID",req.user.id)
     const isValid = await exports.verifyCsrfToken(req.user.id, csrfToken);
-    console.log('CSRF Token valid:', isValid);
     
     if (!isValid) {
-      console.log('Invalid CSRF token');
       return res.status(403).json({
         status: 'fail',
         message: 'Invalid or expired CSRF token'
@@ -175,31 +221,38 @@ exports.csrfProtection = async (req, res, next) => {
     }
     
     // Generate a new token for the response
-    
     const newToken = await exports.generateCsrfToken(req.user.id);
     res.setHeader('X-CSRF-Token', newToken);
     exports.setCsrfCookie(res, newToken);
     
-    console.log('=== END CSRF DEBUG ===');
     return next();
   }
   
-  
-  console.log('No CSRF token or user not authenticated');
-  console.log('=== END CSRF DEBUG ===');
-  
-  // For login/register routes without existing auth
-  if (['POST'].includes(req.method) && 
-      (req.path === '/api/auth/login' || req.path === '/api/auth/register' || 
-       req.path === '/api/auth/forgot-password' || req.path.startsWith('/api/auth/reset-password/'))) {
-    // Allow these specific public endpoints
-    return next();
-  }
-  
+  // If we get here, CSRF validation failed
   return res.status(403).json({
     status: 'fail',
     message: 'CSRF protection: Token required for this operation'
   });
+};
+
+// New function to verify CSRF tokens by session ID
+exports.verifySessionCsrfToken = async (sessionId, token) => {
+  if (!sessionId || !token) return false;
+  
+  const key = `csrf:session:${sessionId}:${token}`;
+  const exists = await redis.getAsync(key);
+  
+  return exists === '1';
+};
+
+// New function to generate CSRF tokens by session ID
+exports.generateSessionCsrfToken = async (sessionId) => {
+  const csrfToken = crypto.randomBytes(64).toString('hex');
+  
+  const key = `csrf:session:${sessionId}:${csrfToken}`;
+  await redis.setAsync(key, '1', 'EX', 28800); // 8 hours
+  
+  return csrfToken;
 };
 
 /**

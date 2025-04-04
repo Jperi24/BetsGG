@@ -167,33 +167,78 @@ exports.login = async (req, res, next) => {
   }
 };
 
-// Improved logout with session invalidation
+// backend/src/api/auth/controller.js
+// Replace the existing logout function with this improved version
+
 exports.logout = async (req, res, next) => {
   try {
-  
+    console.log('Logout initiated for user:', req.user?.id || 'No user ID');
+    console.log('Session ID from cookie:', req.cookies.session_id || 'None');
+    
     // Get session ID from cookie
     const sessionId = req.cookies.session_id;
     
-    
     // If sessionId is provided, invalidate just that session
     if (sessionId) {
+      console.log(`Invalidating session: ${sessionId}`);
       await sessionService.invalidateSession(sessionId);
     } else if (req.user) {
       // Otherwise invalidate all sessions for this user
+      console.log(`Invalidating all sessions for user: ${req.user.id}`);
       await sessionService.invalidateAllUserSessions(req.user.id);
     }
     
-    // Clear auth cookies
-    cookieAuth.clearAuthCookies(res);
+    // Clear all auth-related cookies with proper settings
+    clearAllAuthCookies(res);
     
+    // Send success response
     res.status(200).json({
       status: 'success',
       message: 'Successfully logged out'
     });
   } catch (error) {
+    console.error('Error during logout:', error);
     next(error);
   }
 };
+
+// New helper function to ensure consistent cookie clearing
+function clearAllAuthCookies(res) {
+  // Common cookie options
+  const cookieOptions = {
+    // Using '/' ensures the cookie is cleared for the entire domain
+    path: '/',
+    // Setting an expiry date in the past forces immediate deletion
+    expires: new Date(0),
+    // Match the security settings used when setting cookies
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
+  };
+
+  console.log('Clearing auth_token cookie');
+  res.clearCookie('auth_token', {
+    ...cookieOptions,
+    httpOnly: true // This must match how it was set
+  });
+  
+  console.log('Clearing session_id cookie');
+  res.clearCookie('session_id', {
+    ...cookieOptions,
+    httpOnly: true // This should match how it was set
+  });
+  
+  console.log('Clearing csrf_token cookie');
+  res.clearCookie('csrf_token', {
+    ...cookieOptions,
+    httpOnly: false // This should match how it was set
+  });
+  
+  // Clear any other auth-related cookies
+  res.clearCookie('XSRF-TOKEN', cookieOptions);
+  
+  // Log cookie clearing
+  console.log('All auth cookies cleared');
+}
 
 // Verify 2FA token
 exports.verifyTwoFactor = async (req, res, next) => {

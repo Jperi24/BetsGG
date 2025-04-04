@@ -1,4 +1,6 @@
-// src/api/bets/routes.js
+// backend/src/api/bets/routes.js
+// Update the bets routes to use improved restrictTo and middleware application
+
 const express = require('express');
 const router = express.Router();
 const betsController = require('./controller');
@@ -26,9 +28,6 @@ router.get(
   betsController.getBetById
 );
 
-
-
-// Fix the route to use a parameter for tournament slug
 router.get(
   '/tournament/:tournamentSlug(*)',
   [
@@ -45,8 +44,6 @@ router.get(
 
 // Protected routes (require authentication)
 router.use(protect);
-
-
 
 router.post(
   '/',
@@ -114,9 +111,8 @@ router.post(
 router.get('/user/created', betsController.getUserCreatedBets);
 router.get('/user/participated', betsController.getUserParticipatedBets);
 
-// Admin-only routes
-router.use(restrictTo('admin'));
-
+// Admin-only routes - IMPORTANT: The restrictTo middleware is now properly placed on individual routes
+// rather than at the router level to prevent it from affecting other routes
 router.post(
   '/:betId/cancel',
   [
@@ -128,6 +124,7 @@ router.post(
       .withMessage('Please provide a reason for cancellation'),
     validateRequest
   ],
+  restrictTo('admin'),  // Placed specifically on this route
   betsController.cancelBet
 );
 
@@ -144,6 +141,7 @@ router.put(
       .withMessage('Winner must be 0 (draw/cancelled), 1 (contestant 1), or 2 (contestant 2)'),
     validateRequest
   ],
+  restrictTo('admin'),  // Placed specifically on this route
   betsController.updateBetStatus
 );
 

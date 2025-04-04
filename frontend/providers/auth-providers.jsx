@@ -275,49 +275,62 @@ const handleAuthSuccess = (response) => {
     }
   };
   
-  // Secure logout - calls server to invalidate session
-  const logout = async () => {
-    try {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Initiating logout process');
-      }
-      
-      // First, update local state to prevent UI flashing
-      setUser(null);
-      setRequires2FA(false);
-      setAuthState({ needs2FA: false });
-      
-      // Clear session refresh interval
-      if (sessionRefreshInterval) {
-        clearInterval(sessionRefreshInterval);
-        setSessionRefreshInterval(null);
-      }
-      
-      // Then call server endpoint to invalidate the session cookie
-      await apiLogout();
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Logout completed successfully');
-      }
-      
+
+
+// Secure logout with proper flow and error handling
+const logout = async () => {
+  try {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Initiating logout process');
+    }
+    
+    // First, update local state to prevent UI flashing
+    setUser(null);
+    setRequires2FA(false);
+    setAuthState({ needs2FA: false });
+    
+    // Clear session refresh interval
+    if (sessionRefreshInterval) {
+      clearInterval(sessionRefreshInterval);
+      setSessionRefreshInterval(null);
+    }
+    
+    // IMPORTANT: Add a flag to track logout is in progress
+    const logoutInProgress = true;
+    
+    // Call server endpoint to invalidate the session and clear cookies
+    await apiLogout();
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Logout API call completed successfully');
+    }
+    
+    // Add a small delay to ensure cookies are properly cleared
+    // before redirect
+    setTimeout(() => {
       // Reload the page to ensure all state is cleared
       if (typeof window !== 'undefined') {
-        window.location.href = '/';
+        // Force navigation to login page instead of home to avoid auto-redirect
+        window.location.href = '/login?loggedout=true';
       }
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Logout error:', error);
-      }
-      
-      // Even if the server call fails, ensure local state is cleared
-      setUser(null);
-      
-      // Force reload to clear everything
-      if (typeof window !== 'undefined') {
-        window.location.href = '/';
-      }
+    }, 200); // Small delay to allow cookies to be processed
+    
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Logout error:', error);
     }
-  };
+    
+    // Even if the server call fails, ensure local state is cleared
+    setUser(null);
+    
+    // Force reload to clear everything, with a small delay
+    setTimeout(() => {
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login?loggedout=true&error=true';
+      }
+    }, 200);
+  }
+};
 
   // Update user data helper (for balance changes, etc.)
   const updateUserData = (userData) => {

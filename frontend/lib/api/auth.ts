@@ -51,66 +51,67 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
   return handleApiResponse(response);
 };
 
-// Improved logout function with CSRF token support
+// frontend/lib/api/auth.ts
+// Replace the existing logout function with this improved version
+
 export const logout = async (): Promise<{ status: string; message: string }> => {
   try {
-    // Get CSRF token synchronously from cookies
+    // Get CSRF token if available
     let csrfToken = '';
     
     if (typeof document !== 'undefined') {
-      // Directly check for the cookie without any async operations
       const csrfCookie = document.cookie
         .split('; ')
-        .find(row => row.startsWith('csrf_token='));
+        .find(row => row.startsWith('csrf_token=') || row.startsWith('XSRF-TOKEN='));
         
       if (csrfCookie) {
         csrfToken = decodeURIComponent(csrfCookie.split('=')[1]);
-      } else {
-        // Check alternative cookie name
-        const xsrfCookie = document.cookie
-          .split('; ')
-          .find(row => row.startsWith('XSRF-TOKEN='));
-          
-        if (xsrfCookie) {
-          csrfToken = decodeURIComponent(xsrfCookie.split('=')[1]);
-        }
       }
     }
     
-    // Debug token in development
+    // Log available cookies before logout (in development only)
     if (process.env.NODE_ENV === 'development') {
-      console.log('CSRF Token for logout:', csrfToken);
-      console.log('Available cookies:', document.cookie);
+      console.log('Cookies before logout:', document.cookie);
     }
     
-    // Call server logout endpoint with explicit token
+    // Call server logout endpoint
     const response = await apiClient.post('/auth/logout', {}, {
-      headers: {
-        // Use string directly, not a promise
-        'X-CSRF-Token': csrfToken || '',
-        'X-CSRF-TOKEN': csrfToken || ''
-      }
+      headers: csrfToken ? {
+        'X-CSRF-Token': csrfToken
+      } : {},
+      withCredentials: true // Important: ensure cookies are sent with request
     });
     
-    // Clear storage and cookies as before...
+    // Clear client-side state
     if (typeof window !== 'undefined') {
+      // Clear any localStorage or sessionStorage items
       localStorage.removeItem('token');
       sessionStorage.removeItem('tempToken');
       sessionStorage.removeItem('requires2FA');
       sessionStorage.removeItem('pendingAuthEmail');
       
-      // Clear cookies...
-      document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
-      document.cookie = 'session_id=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
-      document.cookie = 'csrf_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
+      // Don't attempt to clear httpOnly cookies directly - the server will handle that
       
-      // Clear other cookies...
+      // Only attempt to clear non-httpOnly cookies to avoid console errors
+      document.cookie = 'csrf_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
+      document.cookie = 'XSRF-TOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
+      
+      // Log cookies after client-side clearing (in development only)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Cookies after client-side clearing:', document.cookie);
+      }
     }
     
     return handleApiResponse(response);
   } catch (error) {
     console.error('Logout error:', error);
-    // Clear storage if request fails...
+    
+    // Even if the request fails, clear client-side state
+    if (typeof window !== 'undefined') {
+      localStorage.clear();
+      sessionStorage.clear();
+    }
+    
     throw error;
   }
 };
