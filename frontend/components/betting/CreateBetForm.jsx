@@ -1,11 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader, AlertCircle, Info } from 'lucide-react';
 import { createBet } from '@/lib/api/bets';
 import { getTournamentBySlug, getSetsByPhaseId } from '@/lib/api/tournaments';
 
 const CreateBetForm = ({ tournamentSlug }) => {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Get pre-filled parameters from URL if they exist
+  const prefilledEventId = searchParams.get('eventId');
+  const prefilledPhaseId = searchParams.get('phaseId');
+  const prefilledSetId = searchParams.get('setId');
   
   // Form state
   const [loading, setLoading] = useState(true);
@@ -15,11 +21,11 @@ const CreateBetForm = ({ tournamentSlug }) => {
   
   // Tournament data
   const [tournament, setTournament] = useState(null);
-  const [selectedEvent, setSelectedEvent] = useState('');
-  const [selectedPhase, setSelectedPhase] = useState('');
-  const [selectedSet, setSelectedSet] = useState('');
+  const [selectedEvent, setSelectedEvent] = useState(prefilledEventId || '');
+  const [selectedPhase, setSelectedPhase] = useState(prefilledPhaseId || '');
+  const [selectedSet, setSelectedSet] = useState(prefilledSetId || '');
   const [availableSets, setAvailableSets] = useState([]);
-  const [revisedSlug,setRevisedSlug]= useState('');
+  const [revisedSlug, setRevisedSlug] = useState('');
   
   // Bet parameters
   const [minBet, setMinBet] = useState('0.001');
@@ -32,12 +38,11 @@ const CreateBetForm = ({ tournamentSlug }) => {
       
       try {
         setLoading(true);
-        const newSlug = tournamentSlug.replace("tournament/","")
-        setRevisedSlug(newSlug)
-
-      
+        const newSlug = tournamentSlug.replace("tournament/","");
+        setRevisedSlug(newSlug);
+        
         const response = await getTournamentBySlug(newSlug);
-        console.log("Response::",response)
+        console.log("Response::", response);
         setTournament(response.data.tournament);
       } catch (err) {
         setError('Failed to load tournament data. Please try again.');
@@ -70,6 +75,11 @@ const CreateBetForm = ({ tournamentSlug }) => {
         );
         
         setAvailableSets(validSets);
+        
+        // Auto-select the set if it was pre-filled and exists in the available sets
+        if (prefilledSetId && validSets.some(set => set.id === prefilledSetId)) {
+          setSelectedSet(prefilledSetId);
+        }
       } catch (err) {
         setError('Failed to load matches. Please try again.');
       } finally {
@@ -78,20 +88,26 @@ const CreateBetForm = ({ tournamentSlug }) => {
     };
     
     loadSets();
-  }, [selectedPhase]);
+  }, [selectedPhase, prefilledSetId]);
   
   // Handle event selection
   const handleEventChange = (e) => {
     setSelectedEvent(e.target.value);
-    setSelectedPhase('');
-    setSelectedSet('');
-    setAvailableSets([]);
+    // Only reset phase if different from pre-filled value
+    if (e.target.value !== prefilledEventId) {
+      setSelectedPhase('');
+      setSelectedSet('');
+      setAvailableSets([]);
+    }
   };
   
   // Handle phase selection
   const handlePhaseChange = (e) => {
     setSelectedPhase(e.target.value);
-    setSelectedSet('');
+    // Only reset set if different from pre-filled value
+    if (e.target.value !== prefilledPhaseId) {
+      setSelectedSet('');
+    }
   };
   
   // Handle set selection
@@ -230,6 +246,7 @@ const CreateBetForm = ({ tournamentSlug }) => {
             onChange={handleEventChange}
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             required
+            disabled={!!prefilledEventId}
           >
             <option value="" disabled>Select an event</option>
             {tournament.events && tournament.events.map(event => (
@@ -252,6 +269,7 @@ const CreateBetForm = ({ tournamentSlug }) => {
               onChange={handlePhaseChange}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
               required
+              disabled={!!prefilledPhaseId}
             >
               <option value="" disabled>Select a phase</option>
               {tournament.events.find(e => e.id === selectedEvent)?.phases.map(phase => (
@@ -283,6 +301,7 @@ const CreateBetForm = ({ tournamentSlug }) => {
                     onChange={handleSetChange}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                     required
+                    disabled={!!prefilledSetId}
                   >
                     <option value="" disabled>Select a match</option>
                     {availableSets.map(set => (

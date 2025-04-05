@@ -73,6 +73,7 @@ const apiClient = axios.create({
 // In frontend/lib/api/index.ts, modify the request interceptor
 apiClient.interceptors.request.use(
   (config) => {
+    config.withCredentials = true;
     // Add CSRF token for state-changing methods
     if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
       let csrfToken = '';

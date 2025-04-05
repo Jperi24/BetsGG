@@ -1,17 +1,26 @@
 "use client"
 
 import React, { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation'; // Import useSearchParams
+import { useRouter, useSearchParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import CreateBetForm from '@/components/betting/CreateBetForm';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { getFeaturedTournaments } from '@/lib/api/tournaments';
-import { Loader, AlertCircle } from 'lucide-react';
+import { Loader, AlertCircle, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 
 const CreateBetPage = () => {
   const router = useRouter();
-  const searchParams = useSearchParams(); // Use this hook instead
-  const tournamentSlug = searchParams.get('tournament'); // Get the 'tournament' parameter
+  const searchParams = useSearchParams();
+  
+  // Get parameters from URL
+  const tournamentSlug = searchParams.get('tournament');
+  const eventId = searchParams.get('eventId');
+  const phaseId = searchParams.get('phaseId');
+  const setId = searchParams.get('setId');
+  
+  // If we have all the parameters, it's a direct bet creation from a match
+  const isDirectBetCreation = !!(tournamentSlug && eventId && phaseId && setId);
   
   const [loading, setLoading] = useState(true);
   const [tournaments, setTournaments] = useState([]);
@@ -44,22 +53,41 @@ const CreateBetPage = () => {
     loadTournaments();
   }, [tournamentSlug]);
   
-  // Rest of your component remains the same...
-  
   // Handle tournament selection
   const handleTournamentSelect = (slug) => {
     setSelectedTournament(slug);
+  };
+  
+  // If direct bet creation, determine the return URL for the back button
+  const getReturnUrl = () => {
+    if (isDirectBetCreation) {
+      return `/tournaments/tournament/${tournamentSlug}/events/${eventId}/phases/${phaseId}`;
+    }
+    return '/tournaments';
   };
   
   return (
     <ProtectedRoute>
       <MainLayout title="Create Bet | EsportsBets">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold text-gray-900">Create a Bet</h1>
-            <p className="mt-2 text-gray-600">
-              Set up a new betting pool for a tournament match
-            </p>
+          <div className="mb-6 flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Create a Bet</h1>
+              <p className="mt-2 text-gray-600">
+                Set up a new betting pool for a tournament match
+              </p>
+            </div>
+            
+            {/* Back button - shown when creating a bet directly from a match */}
+            {isDirectBetCreation && (
+              <Link
+                href={getReturnUrl()}
+                className="flex items-center text-sm text-indigo-600 hover:text-indigo-800"
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Back to Matches
+              </Link>
+            )}
           </div>
           
           {error && (
@@ -103,7 +131,7 @@ const CreateBetPage = () => {
                             onClick={() => handleTournamentSelect(tournament.slug)}
                             className="block text-left border border-gray-200 rounded-md p-4 hover:border-indigo-500 hover:bg-indigo-50 transition"
                           >
-                            <h3 className="font-medium text-gray-900">{tournament.name}</h3>
+                                                        <h3 className="font-medium text-gray-900">{tournament.name}</h3>
                             <p className="text-sm text-gray-500 mt-1">
                               {new Date(tournament.startAt * 1000).toLocaleDateString()}
                             </p>

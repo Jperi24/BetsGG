@@ -1,14 +1,17 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { getSetsByPhaseId, getTournamentBySlug } from '@/lib/api/tournaments';
 import Link from 'next/link';
-import { ArrowLeft, Loader, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Loader, AlertCircle, Plus } from 'lucide-react';
+import { useAuth } from '@/providers/auth-providers';
 
 export default function PhaseMatchesPage() {
   const params = useParams();
+  const router = useRouter();
   const { slug, eventId, phaseId } = params;
+  const { user } = useAuth();
   
   const [loading, setLoading] = useState(true);
   const [sets, setSets] = useState([]);
@@ -49,6 +52,12 @@ export default function PhaseMatchesPage() {
       loadData();
     }
   }, [slug, eventId, phaseId]);
+  
+  // Handle "Create Bet" button click
+  const handleCreateBet = (setId) => {
+    // Redirect to the bet creation page with pre-filled tournament and match details
+    router.push(`/bets/create?tournament=${slug}&eventId=${eventId}&phaseId=${phaseId}&setId=${setId}`);
+  };
   
   if (loading) {
     return (
@@ -111,15 +120,15 @@ export default function PhaseMatchesPage() {
           ) : (
             sets.map((set) => (
               <li key={set.id} className="p-6 hover:bg-gray-50">
-                <div className="flex justify-between items-center">
-                  <div className="w-full">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
+                  <div className="w-full md:w-auto mb-4 md:mb-0">
                     <div className="text-lg font-medium text-gray-900 mb-2">
                       {set.fullRoundText || 'Match'}
                     </div>
                     
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center">
                       {/* Entrant 1 */}
-                      <div className={`text-center flex-1 p-2 rounded ${
+                      <div className={`text-center sm:flex-1 p-2 rounded mb-2 sm:mb-0 ${
                         set.winnerId === set.slots[0]?.entrant?.id 
                           ? 'bg-green-50 border border-green-200' 
                           : ''
@@ -134,10 +143,10 @@ export default function PhaseMatchesPage() {
                         </p>
                       </div>
                       
-                      <div className="mx-4 text-gray-400 font-medium">VS</div>
+                      <div className="mx-4 text-gray-400 font-medium hidden sm:block">VS</div>
                       
                       {/* Entrant 2 */}
-                      <div className={`text-center flex-1 p-2 rounded ${
+                      <div className={`text-center sm:flex-1 p-2 rounded ${
                         set.winnerId === set.slots[1]?.entrant?.id 
                           ? 'bg-green-50 border border-green-200' 
                           : ''
@@ -162,10 +171,19 @@ export default function PhaseMatchesPage() {
                           set.state === 3 ? 'Completed' : 'Unknown'
                         }
                       </span>
-                      
-                      {/* If there's data about match time, you could add it here */}
                     </div>
                   </div>
+                  
+                  {/* Create Bet Button - Only show if user is authenticated and both entrants are defined */}
+                  {user && set.slots[0]?.entrant?.name && set.slots[1]?.entrant?.name && (
+                    <button
+                      onClick={() => handleCreateBet(set.id)}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Create Bet
+                    </button>
+                  )}
                 </div>
               </li>
             ))

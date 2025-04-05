@@ -212,6 +212,7 @@ exports.csrfProtection = async (req, res, next) => {
   
   console.log(`CSRF token from request: ${csrfToken ? 'Present' : 'Missing'}`);
   
+  
   // For login/register routes without existing auth
   if (['POST'].includes(req.method) && 
       (req.path === '/api/auth/login' || 
@@ -224,6 +225,8 @@ exports.csrfProtection = async (req, res, next) => {
   }
   
   // Standard CSRF protection for authenticated routes
+  console.log("REQ USER",req.user)
+  
   if (req.user && csrfToken) {
     console.log(`Verifying user-based CSRF token for user ID: ${req.user.id}`);
     const isValid = await exports.verifyCsrfToken(req.user.id, csrfToken);
