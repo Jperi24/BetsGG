@@ -8,7 +8,7 @@ const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
 const hpp = require('hpp');
 const mongoose = require('mongoose');
-const { csrfProtection } = require('./middleware/cookie-auth');
+const { secureRouteWithSafeMethods } = require('./middleware/security');
 const { rateLimit } = require('express-rate-limit');
 require('dotenv').config();const passport = require('passport');
 const { setupGoogleAuth } = require('./services/auth/google-auth');
@@ -118,8 +118,8 @@ app.use(cors(corsOptions));
 app.use('/api', standardLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
-app.use('/api/auth/forgot-password', authLimiter);
-app.use('/api/auth/reset-password/:token', authLimiter);
+app.use('/api/auth/forgot-password',authLimiter);
+app.use('/api/auth/reset-password/:token',authLimiter);
 app.use('/api/wallet', financialLimiter);
 app.use('/api/bets', bettingLimiter);
 
@@ -179,8 +179,7 @@ app.use(hpp({
 // Compression middleware
 app.use(compression({ level: 6 })); // Balanced compression level
 
-// Enhanced CSRF protection for state-changing operations
-app.use(csrfProtection);
+
 
 // Trust proxy configuration for proper IP detection
 if (process.env.NODE_ENV === 'production') {
@@ -231,11 +230,11 @@ app.use((req, res, next) => {
 // Apply enhanced routes with specific CSRF requirements
 app.use('/api/auth', authRoutes);
 app.use('/api/tournaments', tournamentRoutes);
-app.use('/api/bets', betsRoutes);
+app.use('/api/bets',secureRouteWithSafeMethods, betsRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/user', userRoutes);
-app.use('/api/notifications', notificationsRoutes);
-app.use('/api/auth/sessions', sessionRoutes);
+app.use('/api/notifications',secureRouteWithSafeMethods, notificationsRoutes);
+app.use('/api/auth/sessions',secureRouteWithSafeMethods, sessionRoutes);
 
 // Enhanced health check endpoint
 app.get('/health', (req, res) => {
