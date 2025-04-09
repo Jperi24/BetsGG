@@ -108,6 +108,8 @@ const handleLogin = async (e) => {
   
   // Handle 2FA verification success
   const handle2FAVerificationSuccess = () => {
+  
+    
     // Redirect will be handled by the auth state change effect
   };
   

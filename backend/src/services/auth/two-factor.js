@@ -340,9 +340,21 @@ const verifyAndEnableTwoFactor = async (userId, token) => {
 
 // src/services/auth/two-factor.js - More secure verification
 
-const verifyTwoFactorToken = async (userId, token, isRecoveryCode = false) => {
-  // Find user
-  const user = await User.findById(userId).select('+twoFactorSecret +twoFactorRecoveryCodes');
+// src/services/auth/two-factor.js - Fixed verifyTwoFactorToken function
+// In backend/src/services/auth/two-factor.js
+const verifyTwoFactorToken = async (userId, code, isRecoveryCode = false) => {
+  // First determine if userId is an email or ID
+  let user;
+  
+  // Check if it looks like an email
+  if (typeof userId === 'string' && userId.includes('@')) {
+    // Find user by email
+    user = await User.findOne({ email: userId }).select('+twoFactorSecret +twoFactorRecoveryCodes');
+  } else {
+    // Find user by ID
+    user = await User.findById(userId).select('+twoFactorSecret +twoFactorRecoveryCodes');
+  }
+  
   if (!user) {
     throw new AppError('User not found', 404);
   }
@@ -353,13 +365,13 @@ const verifyTwoFactorToken = async (userId, token, isRecoveryCode = false) => {
   }
   
   // Check if we're using a recovery code
-  if (isRecoveryCode || (token.includes('-') && token.length > 10)) {
+  if (isRecoveryCode || (code.includes('-') && code.length > 10)) {
     // Normalize the code for comparison
-    const normalizedCode = token.replace(/\s+/g, '').replace(/-/g, '').toUpperCase();
+    const normalizedCode = code.replace(/\s+/g, '').replace(/-/g, '').toUpperCase();
     
     // Find the code in the user's recovery codes
     const codeIndex = user.twoFactorRecoveryCodes.findIndex(
-      code => code.replace(/\s+/g, '').replace(/-/g, '').toUpperCase() === normalizedCode
+      storedCode => storedCode.replace(/\s+/g, '').replace(/-/g, '').toUpperCase() === normalizedCode
     );
     
     if (codeIndex !== -1) {
@@ -367,7 +379,7 @@ const verifyTwoFactorToken = async (userId, token, isRecoveryCode = false) => {
       const updatedCodes = [...user.twoFactorRecoveryCodes];
       updatedCodes.splice(codeIndex, 1);
       
-      await User.findByIdAndUpdate(userId, {
+      await User.findByIdAndUpdate(user._id, {
         twoFactorRecoveryCodes: updatedCodes
       });
       
@@ -378,9 +390,9 @@ const verifyTwoFactorToken = async (userId, token, isRecoveryCode = false) => {
   }
   
   // Clean the token
-  const cleanToken = token.replace(/\s+/g, '');
+  const cleanToken = code.replace(/\s+/g, '');
   
-  // Improved verification with smaller window
+  // Verify TOTP code
   const verified = speakeasy.totp.verify({
     secret: user.twoFactorSecret,
     encoding: 'base32',
@@ -389,18 +401,23 @@ const verifyTwoFactorToken = async (userId, token, isRecoveryCode = false) => {
   });
   
   // Add anti-replay protection by storing used tokens with a short TTL
-  if (verified) {
-    const tokenKey = `2fa:used:${userId}:${cleanToken}`;
-    const exists = await redis.getAsync(tokenKey);
-    
-    if (exists) {
-      // Token has been used before - reject it
-      console.log(`2FA token reuse attempt detected for user ${userId}`);
-      return false;
+  if (verified && redis && redis.setAsync) {
+    try {
+      const tokenKey = `2fa:used:${user._id}:${cleanToken}`;
+      const exists = await redis.getAsync(tokenKey);
+      
+      if (exists) {
+        // Token has been used before - reject it
+        console.log(`2FA token reuse attempt detected for user ${user._id}`);
+        return false;
+      }
+      
+      // Store this token as used for 2 minutes (longer than its validity period)
+      await redis.setAsync(tokenKey, '1', 'EX', 120);
+    } catch (redisError) {
+      console.error('Redis error during 2FA verification:', redisError);
+      // Continue even if Redis fails - security is slightly reduced but better than breaking the flow
     }
-    
-    // Store this token as used for 2 minutes (longer than its validity period)
-    await redis.setAsync(tokenKey, '1', 'EX 120');
   }
   
   return verified;

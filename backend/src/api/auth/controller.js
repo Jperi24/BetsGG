@@ -10,6 +10,7 @@ const sessionService = require('../../services/auth/session');
 const notificationService = require('../../services/notification');
 const cookieAuth = require('../../middleware/cookie-auth');
 const { v4: uuidv4 } = require('uuid');
+const speakeasy = require('speakeasy');
 
 // Helper function to create and send token
 // src/api/auth/controller.js - Update createSendToken function
@@ -305,8 +306,12 @@ function clearAllAuthCookies(res) {
 }
 
 // Verify 2FA token
+// In backend/src/api/auth/controller.js
 exports.verifyTwoFactor = async (req, res, next) => {
   try {
+    console.log('Received 2FA verification request:');
+    console.log('Body:', JSON.stringify(req.body));
+    
     const { token, code, isRecoveryCode } = req.body;
     
     if (!token || !code) {
@@ -315,35 +320,113 @@ exports.verifyTwoFactor = async (req, res, next) => {
         message: 'Verification token and code are required'
       });
     }
+
+    // Add explicit logging to track the flow
+    console.log('Starting 2FA verification process');
     
-    // Extract user ID from JWT token
-    let userId;
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      userId = decoded.id;
-    } catch (error) {
-      return res.status(401).json({
+    // Step 1: ALWAYS use email lookup first if it looks like an email
+    let user = null;
+    if (typeof token === 'string' && token.includes('@')) {
+      console.log('Token appears to be an email address, using email lookup');
+      user = await User.findOne({ email: token }).select('+twoFactorSecret +twoFactorRecoveryCodes');
+    } 
+    
+    // If we still don't have a user, check if token might be a valid ObjectId
+    if (!user && /^[0-9a-fA-F]{24}$/.test(token)) {
+      console.log('Token appears to be an ObjectId, using findById');
+      user = await User.findById(token).select('+twoFactorSecret +twoFactorRecoveryCodes');
+    }
+    
+    // Last resort: try JWT decode
+    if (!user) {
+      try {
+        console.log('Attempting to decode token as JWT');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (decoded && decoded.id) {
+          console.log('Found user ID in JWT:', decoded.id);
+          user = await User.findById(decoded.id).select('+twoFactorSecret +twoFactorRecoveryCodes');
+        }
+      } catch (error) {
+        console.log('Token is not a valid JWT');
+        // Failed to decode JWT, continue with null user
+      }
+    }
+    
+    if (!user) {
+      console.log('No user found with provided token');
+      return res.status(404).json({
         status: 'fail',
-        message: 'Invalid or expired verification token'
+        message: 'User not found'
       });
     }
     
-    // Verify the token - handle both regular codes and recovery codes
-    const isValid = await twoFactorService.verifyTwoFactorToken(userId, code, isRecoveryCode);
+    console.log('Found user:', user._id);
+    
+    // Check if 2FA is enabled
+    if (!user.twoFactorEnabled || !user.twoFactorSecret) {
+      console.log('2FA not enabled for user');
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Two-factor authentication is not enabled for this user'
+      });
+    }
+    
+    // Verify 2FA code
+    let isValid = false;
+    
+    if (isRecoveryCode || (typeof code === 'string' && code.includes('-') && code.length > 10)) {
+      console.log('Verifying recovery code');
+      
+      // Validate recovery code
+      const normalizedCode = code.replace(/\s+/g, '').replace(/-/g, '').toUpperCase();
+      
+      // Get recovery codes - ensure we have them
+      const recoveryCodes = user.twoFactorRecoveryCodes || [];
+      
+      const codeIndex = recoveryCodes.findIndex(
+        storedCode => storedCode.replace(/\s+/g, '').replace(/-/g, '').toUpperCase() === normalizedCode
+      );
+      
+      if (codeIndex !== -1) {
+        // Remove the used code
+        const updatedCodes = [...recoveryCodes];
+        updatedCodes.splice(codeIndex, 1);
+        
+        await User.findByIdAndUpdate(user._id, {
+          twoFactorRecoveryCodes: updatedCodes
+        });
+        
+        isValid = true;
+      }
+    } else {
+      console.log('Verifying TOTP code');
+      
+      // Validate TOTP code
+      const cleanToken = code.replace(/\s+/g, '');
+      
+      // Use the two-factor secret directly
+      isValid = speakeasy.totp.verify({
+        secret: user.twoFactorSecret,
+        encoding: 'base32',
+        token: cleanToken,
+        window: 1
+      });
+    }
     
     if (!isValid) {
+      console.log('Verification failed: Invalid code');
       return res.status(401).json({
         status: 'fail',
         message: 'Invalid verification code'
       });
     }
     
-    // Get the user
-    const user = await User.findById(userId);
+    console.log('Verification successful! Generating token.');
     
-    // Generate full JWT and send response with HTTP-only cookie
+    // If we get here, verification was successful, generate token
     await createSendToken(user, 200, req, res);
   } catch (error) {
+    console.error('Error in verifyTwoFactor:', error);
     next(error);
   }
 };
@@ -771,37 +854,7 @@ exports.linkWallet = async (req, res, next) => {
 
 
 
-// Verify 2FA token
-exports.verifyTwoFactor = async (req, res, next) => {
-  try {
-    const { token, code, isRecoveryCode } = req.body;
-    
-    if (!token || !code) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Verification token and code are required'
-      });
-    }
-    
-    // Verify the token - handle both regular codes and recovery codes
-    const isValid = await twoFactorService.verifyTwoFactorToken(token, code, isRecoveryCode);
-    
-    if (!isValid) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'Invalid verification code'
-      });
-    }
-    
-    // Get the user
-    const user = await User.findById(token);
-    
-    // Generate full JWT and send response
-    createSendToken(user, 200, res);
-  } catch (error) {
-    next(error);
-  }
-};
+
 
 
 

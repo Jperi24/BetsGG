@@ -10,6 +10,10 @@ const isValidEthereumAddress = (address) => {
 
 // Centralized validation error handler
 exports.validateRequest = (req, res, next) => {
+  console.log('Received 2FA verification request:');
+    console.log('Body:', JSON.stringify(req.body));
+    console.log('Headers:', JSON.stringify(req.headers));
+  
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({

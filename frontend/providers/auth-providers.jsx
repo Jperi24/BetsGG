@@ -195,7 +195,15 @@ export function AuthProvider({ children }) {
         console.log('Processing 2FA verification');
       }
       
-      const response = await verify2FALogin(authState.email, code, isRecoveryCode);
+      // Make sure we're sending the email that was stored during login
+      const emailToUse = authState.email;
+      
+      if (!emailToUse) {
+        throw new Error('Missing email for 2FA verification');
+      }
+      
+      // Send the verification request
+      const response = await verify2FALogin(emailToUse, code, isRecoveryCode);
       
       // Handle successful authentication
       handleAuthSuccess(response);
@@ -224,8 +232,11 @@ const handleAuthSuccess = (response) => {
   
   // Store user data in state
   setUser(response.data.user);
+
+  setUser(response.data.user);
   setIsLoggedIn(true);
-  setIsAuthenticated(true); // Make sure this is properly updated
+ 
+ 
   
   // Set up session refresh for the new session
   setupSessionRefresh();
