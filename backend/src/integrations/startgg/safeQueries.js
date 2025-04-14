@@ -1,6 +1,5 @@
 // src/integrations/startgg/queries.js
-
-// Keep existing queries
+// For graphql-request, you can use template strings directly
 const GET_FEATURED_TOURNAMENTS_QUERY = `
   query FeaturedTournamentsQuery(
     $page: Int
@@ -169,37 +168,10 @@ const GET_SET_BY_ID_QUERY = `
   }
 `;
 
-// Add the reduced complexity query
-const GET_SETS_BY_PHASE_REDUCED_QUERY = `
-  query PhaseSetReduced($phaseId: ID!, $page: Int!, $perPage: Int!) {
-    phase(id: $phaseId) {
-      id
-      sets(page: $page, perPage: $perPage, sortType: STANDARD) {
-        nodes {
-          id
-          fullRoundText
-          state
-          winnerId
-          slots {
-            entrant {
-              id
-              name
-            }
-            standing {
-              placement
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-
 module.exports = {
   GET_FEATURED_TOURNAMENTS_QUERY,
   GET_ALL_TOURNAMENTS_QUERY,
   GET_TOURNAMENT_QUERY,
   GET_SETS_BY_PHASE_QUERY,
-  GET_SETS_BY_PHASE_REDUCED_QUERY,
-  GET_SET_BY_ID_QUERY
+  GET_SET_BY_ID_QUERY  
 };
