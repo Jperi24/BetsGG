@@ -76,7 +76,7 @@ const TournamentsPage = () => {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       return tournaments.filter(tournament => 
-        tournament.name.toLowerCase().includes(query) || 
+        tournament?.name?.toLowerCase().includes(query) || 
         (tournament.city && tournament.city.toLowerCase().includes(query)) ||
         (tournament.addrState && tournament.addrState.toLowerCase().includes(query)) ||
         (tournament.countryCode && tournament.countryCode.toLowerCase().includes(query))

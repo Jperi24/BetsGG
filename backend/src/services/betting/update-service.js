@@ -160,33 +160,8 @@ const updateBetStatus = async (bet) => {
           }
         }
         
-        // SPECIAL CASE HANDLING FOR SPECIFIC TOURNAMENTS
-        // Sometimes we have information external to the API about who won
-        if (!set && tournamentEnded) {
-          // Special case for Slashback 2025 tournament
-          if (bet.tournamentSlug === "slashback-2025" || parsedId.tournamentId === "2664533") {
-            console.log(`SPECIAL CASE: Handling known tournament Slashback 2025`);
-            
-            // We can hard-code known results for specific matches if needed
-            // For example: if we know a player won this specific match
-            if (bet.contestant1.name === "fart" && bet.contestant2.name === "Mang0") {
-              console.log(`SPECIAL CASE: Applied known result for ${bet.contestant1.name} vs ${bet.contestant2.name}`);
-              
-              // Create a synthetic set result
-              set = {
-                id: "synthetic_" + bet.setId,
-                state: 3, // Completed
-                winnerId: bet.contestant2.id, // Hard-coded winner (contestant 2, Mang0)
-                slots: [
-                  { entrant: { id: bet.contestant1.id, name: bet.contestant1.name } },
-                  { entrant: { id: bet.contestant2.id, name: bet.contestant2.name } }
-                ]
-              };
-            }
-            // Add more specific match overrides as needed
-          }
-        }
-      } else {
+       
+   
         // For active tournaments, use the standard approach
         console.log(`Tournament is active, using standard set lookup approach`);
         
@@ -224,7 +199,7 @@ const updateBetStatus = async (bet) => {
               console.log(`No match found in first page, trying more pages`);
               
               // Try more pages
-              for (let page = 2; page <= 5 && !set; page++) {
+              for (let page = 2; page <= 500 && !set; page++) {
                 try {
                   const moreSets = await startGGApi.getSetsByPhaseWithReduced(bet.phaseId, page, 20);
                   if (moreSets && moreSets.length > 0) {
@@ -295,15 +270,7 @@ const updateBetStatus = async (bet) => {
       return;
     }
     
-    // If this is a special case synthetic set, it's always completed
-    const isSyntheticSet = set.id && set.id.startsWith('synthetic_');
-    
-    // Skip if set is not complete and not synthetic (state 3 is "completed" in StartGG API)
-    if (!isSyntheticSet && (!set.state || set.state !== 3)) { 
-      console.log(`Set found but not complete (state: ${set.state}) for bet ${bet._id}`);
-      await session.abortTransaction();
-      return;
-    }
+ 
     
     console.log(`Set found and completed for bet ${bet._id}, processing result`);
     
@@ -372,14 +339,7 @@ const updateBetStatus = async (bet) => {
           }
         }
       }
-    } else if (isSyntheticSet) {
-      // For synthetic sets, we need to manually determine the winner
-      // This is defined when creating the synthetic set
-      if (set.manualWinner) {
-        winner = set.manualWinner;
-        console.log(`Using manually set winner: ${winner}`);
-      }
-    }
+    } 
     
     // Update bet status to completed and set winner
     bet.status = 'completed';
