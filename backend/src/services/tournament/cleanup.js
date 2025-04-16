@@ -144,7 +144,7 @@ const cleanupOrArchiveExpiredTournaments = async (daysThreshold = 5, archive = f
  * @param {Number} daysThreshold - Number of days after which a tournament is considered for cleanup
  * @param {Boolean} archive - Whether to archive instead of delete
  */
-const scheduleCleanup = (intervalHours = 24, daysThreshold = 5, archive = false) => {
+const scheduleCleanup = (intervalHours = 24, daysThreshold = 5, archive = true) => {
   // Convert hours to milliseconds
   const interval = intervalHours * 60 * 60 * 1000;
   

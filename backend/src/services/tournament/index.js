@@ -27,6 +27,123 @@ const getTimestamp = (days) => {
 
 
 // Alternative tournament service function
+// const fetchAllTournaments = async () => {
+//   if (isFetchingTournaments) {
+//     console.log('Tournament fetch already in progress');
+//     return;
+//   }
+
+//   isFetchingTournaments = true;
+//   try {
+//     console.log('Starting full tournament refresh...');
+
+//     // Calculate date ranges
+//     const todayDate = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
+//     const pastDays5 = getTimestamp(-5); // 5 days ago 
+//     const pastDays3 = getTimestamp(-3);   // 3 days ago
+//     const futureDays5 = getTimestamp(5);  // 5 days in the future
+
+//     // Step 1: Fetch featured tournaments
+//     let allTournaments = [];
+//     let page = 1;
+//     const perPage = 50;
+//     let hasMore = true;
+
+//     while (hasMore && page <= 3) { // Limit to 3 pages
+//       try {
+//         // Sleep to avoid rate limiting
+//         await new Promise(resolve => setTimeout(resolve, 300));
+        
+//         // Fetch featured tournaments - original API call without sort parameters
+//         const tournaments = await startGGApi.getFeaturedTournaments(
+//           pastDays5,
+//           page,
+//           perPage
+//         );
+        
+//         // Filter to include only tournaments that haven't ended
+//         const filteredTournaments = tournaments.filter(
+//           tournament => tournament.endAt >= todayDate
+//         );
+        
+//         // Add to our collection
+//         allTournaments = [...allTournaments, ...filteredTournaments];
+        
+//         // Check if we should fetch more
+//         hasMore = tournaments.length === perPage;
+//         page += 1;
+//       } catch (error) {
+//         console.error('Error fetching featured tournaments:', error);
+//         hasMore = false;
+//       }
+//     }
+
+//     // Sort manually to get newest first
+//     allTournaments.sort((a, b) => b.startAt - a.startAt);
+
+//     console.log(`Fetched ${allTournaments.length} featured tournaments`);
+
+//     // Step 2: If we need more tournaments, fetch regular tournaments
+//     if (allTournaments.length < 75) {
+//       // Fetch regular tournaments with higher attendance
+//       page = 1;
+//       hasMore = true;
+//       const regularTournaments = [];
+      
+//       while (hasMore && page <= 5) { // Limit to 3 pages
+//         try {
+//           // Sleep to avoid rate limiting
+//           await new Promise(resolve => setTimeout(resolve, 300));
+          
+//           // Fetch regular tournaments - original call without sort params
+//           const result = await startGGApi.getTournaments(
+//             pastDays3,
+//             futureDays5,
+//             page,
+//             perPage
+//           );
+          
+//           // Filter tournaments
+//           const filteredTournaments = result.tournaments.filter(
+//             tournament => tournament.endAt >= todayDate && tournament.numAttendees > 20
+//           );
+          
+//           // Add to our regular tournaments collection
+//           regularTournaments.push(...filteredTournaments);
+          
+//           // Check if we should fetch more
+//           hasMore = result.tournaments.length === perPage;
+//           page += 1;
+//         } catch (error) {
+//           console.error('Error fetching regular tournaments:', error);
+//           hasMore = false;
+//         }
+//       }
+
+//       // Sort regular tournaments manually to get newest first
+//       regularTournaments.sort((a, b) => b.startAt - a.startAt);
+      
+//       // Add regular tournaments to our collection
+//       allTournaments = [...allTournaments, ...regularTournaments];
+//     }
+
+//     // Remove duplicates based on tournament ID
+//     allTournaments = allTournaments.filter((tournament, index, self) =>
+//       index === self.findIndex((t) => t.id === tournament.id)
+//     );
+
+//     // Limit to top 100 tournaments 
+//     allTournaments = allTournaments.slice(0, 100);
+//     console.log(`Total tournaments to process: ${allTournaments.length}`);
+
+//     // Rest of the function remains the same...
+//   } catch (error) {
+//     console.error('Error in fetchAllTournaments:', error);
+//   } finally {
+//     isFetchingTournaments = false;
+//   }
+// };
+
 const fetchAllTournaments = async () => {
   if (isFetchingTournaments) {
     console.log('Tournament fetch already in progress');
@@ -40,8 +157,8 @@ const fetchAllTournaments = async () => {
     // Calculate date ranges
     const todayDate = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
     const pastDays5 = getTimestamp(-5); // 5 days ago 
-    const pastDays3 = getTimestamp(-3);   // 3 days ago
-    const futureDays5 = getTimestamp(5);  // 5 days in the future
+    const pastDays3 = getTimestamp(-3); // 3 days ago
+    const futureDays5 = getTimestamp(5); // 5 days in the future
 
     // Step 1: Fetch featured tournaments
     let allTournaments = [];
@@ -54,7 +171,7 @@ const fetchAllTournaments = async () => {
         // Sleep to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 300));
         
-        // Fetch featured tournaments - original API call without sort parameters
+        // Fetch featured tournaments
         const tournaments = await startGGApi.getFeaturedTournaments(
           pastDays5,
           page,
@@ -78,65 +195,115 @@ const fetchAllTournaments = async () => {
       }
     }
 
-    // Sort manually to get newest first
-    allTournaments.sort((a, b) => b.startAt - a.startAt);
-
     console.log(`Fetched ${allTournaments.length} featured tournaments`);
 
     // Step 2: If we need more tournaments, fetch regular tournaments
-    if (allTournaments.length < 75) {
-      // Fetch regular tournaments with higher attendance
-      page = 1;
-      hasMore = true;
-      const regularTournaments = [];
+    // Step 2: If we need more tournaments, fetch regular tournaments
+if (allTournaments.length < 75) {
+  // First, determine how many pages are available
+  try {
+    console.log("Checking total pages of regular tournaments available");
+    const initialResult = await startGGApi.getTournaments(
+      pastDays3,
+      futureDays5,
+      1,
+      perPage
+    );
+    
+    // Calculate total pages (if pageInfo.total is available)
+    const totalItems = initialResult.pageInfo?.total || 0;
+    const totalPages = Math.ceil(totalItems / perPage) || 5; // Default to 5 if can't calculate
+    console.log(`Estimated total pages: ${totalPages}`);
+    
+    // Start from the last page and work backwards
+    const regularTournaments = [];
+    const pagesToFetch = Math.min(totalPages, 5); // Limit to 5 pages max
+    
+    for (let pageOffset = 0; pageOffset < pagesToFetch; pageOffset++) {
+      const pageToFetch = totalPages - pageOffset;
+      if (pageToFetch <= 0) break;
       
-      while (hasMore && page <= 5) { // Limit to 3 pages
-        try {
-          // Sleep to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          // Fetch regular tournaments - original call without sort params
-          const result = await startGGApi.getTournaments(
-            pastDays3,
-            futureDays5,
-            page,
-            perPage
-          );
-          
-          // Filter tournaments
-          const filteredTournaments = result.tournaments.filter(
-            tournament => tournament.endAt >= todayDate && tournament.numAttendees > 20
-          );
-          
-          // Add to our regular tournaments collection
-          regularTournaments.push(...filteredTournaments);
-          
-          // Check if we should fetch more
-          hasMore = result.tournaments.length === perPage;
-          page += 1;
-        } catch (error) {
-          console.error('Error fetching regular tournaments:', error);
-          hasMore = false;
+      try {
+        // Sleep to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        console.log(`Fetching non-featured tournaments: page ${pageToFetch} of ${totalPages}`);
+        
+        // Fetch regular tournaments from the end (most recent first)
+        const result = await startGGApi.getTournaments(
+          pastDays3,
+          futureDays5,
+          pageToFetch,
+          perPage
+        );
+        
+        // Filter tournaments
+        const filteredTournaments = result.tournaments.filter(
+          tournament => tournament.endAt >= todayDate && tournament.numAttendees > 20
+        );
+        
+        console.log(`Found ${filteredTournaments.length} non-featured tournaments on page ${pageToFetch}`);
+        
+        // Add to our regular tournaments collection
+        regularTournaments.push(...filteredTournaments);
+        
+        // If we have enough tournaments, stop fetching more pages
+        if (allTournaments.length + regularTournaments.length >= 75) {
+          console.log("Reached target number of tournaments, stopping fetch");
+          break;
         }
+      } catch (error) {
+        console.error(`Error fetching regular tournaments page ${pageToFetch}:`, error);
       }
-
-      // Sort regular tournaments manually to get newest first
-      regularTournaments.sort((a, b) => b.startAt - a.startAt);
-      
-      // Add regular tournaments to our collection
-      allTournaments = [...allTournaments, ...regularTournaments];
     }
-
+    
+    // Add regular tournaments to our collection
+    allTournaments = [...allTournaments, ...regularTournaments];
+    
+  } catch (error) {
+    console.error('Error determining total pages for regular tournaments:', error);
+  }
+}
     // Remove duplicates based on tournament ID
     allTournaments = allTournaments.filter((tournament, index, self) =>
       index === self.findIndex((t) => t.id === tournament.id)
     );
 
+   
+    allTournaments.sort((a, b) => a.startAt - b.startAt);
+
     // Limit to top 100 tournaments 
     allTournaments = allTournaments.slice(0, 100);
     console.log(`Total tournaments to process: ${allTournaments.length}`);
 
-    // Rest of the function remains the same...
+    // THIS IS THE CRITICAL PART: Save to cache and database
+    for (const tournament of allTournaments) {
+      try {
+        // Fetch detailed tournament info
+        const tournamentDetail = await startGGApi.getTournamentDetails(tournament.slug);
+        
+        if (tournamentDetail) {
+          // Store in cache
+          dailyCache.set(tournament.slug.toLowerCase(), tournamentDetail);
+          
+          // Store in database (upsert)
+          await Tournament.findOneAndUpdate(
+            { id: tournament.id },
+            { 
+              ...tournamentDetail,
+              lastUpdated: new Date()
+            },
+            { upsert: true, new: true }
+          );
+          
+          console.log(`Saved tournament to cache and DB: ${tournament.name}`);
+        }
+      } catch (error) {
+        console.error(`Error processing tournament ${tournament.name}:`, error);
+      }
+    }
+    
+    console.log('Tournament refresh completed successfully');
   } catch (error) {
     console.error('Error in fetchAllTournaments:', error);
   } finally {
@@ -416,6 +583,7 @@ const initializeCache = async () => {
 // Schedule regular updates
 const setupScheduledUpdates = () => {
   // Update daily cache every 24 hours
+
   
   setInterval(fetchAllTournaments, 24 * 60 * 60 * 1000);
   

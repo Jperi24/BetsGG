@@ -38,9 +38,12 @@ async function startServer() {
       console.log('Database seeded successfully!');
     }
 
-    await cleanupExpiredTournaments.cleanupExpiredTournaments();
+    // await cleanupExpiredTournaments.cleanupExpiredTournaments();
+
+    await cleanupExpiredTournaments.scheduleCleanup()
     
     // Initialize tournament cache
+    await tournamentService.fetchAllTournaments();
 
   
     await tournamentService.initializeCache();
