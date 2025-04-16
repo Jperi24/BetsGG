@@ -166,7 +166,7 @@ const fetchAllTournaments = async () => {
     const perPage = 50;
     let hasMore = true;
 
-    while (hasMore && page <= 3) { // Limit to 3 pages
+    while (hasMore && page <= 3) { // Limit to 3 pages for featured tournaments
       try {
         // Sleep to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -198,87 +198,131 @@ const fetchAllTournaments = async () => {
     console.log(`Fetched ${allTournaments.length} featured tournaments`);
 
     // Step 2: If we need more tournaments, fetch regular tournaments
-    // Step 2: If we need more tournaments, fetch regular tournaments
-if (allTournaments.length < 75) {
-  // First, determine how many pages are available
-  try {
-    console.log("Checking total pages of regular tournaments available");
-    const initialResult = await startGGApi.getTournaments(
-      pastDays3,
-      futureDays5,
-      1,
-      perPage
-    );
-    
-    // Calculate total pages (if pageInfo.total is available)
-    const totalItems = initialResult.pageInfo?.total || 0;
-    const totalPages = Math.ceil(totalItems / perPage) || 5; // Default to 5 if can't calculate
-    console.log(`Estimated total pages: ${totalPages}`);
-    
-    // Start from the last page and work backwards
-    const regularTournaments = [];
-    const pagesToFetch = Math.min(totalPages, 5); // Limit to 5 pages max
-    
-    for (let pageOffset = 0; pageOffset < pagesToFetch; pageOffset++) {
-      const pageToFetch = totalPages - pageOffset;
-      if (pageToFetch <= 0) break;
+    if (allTournaments.length < 75) {
+      console.log("Fetching non-featured tournaments to reach minimum count");
       
+      // First, check if the API provides total pages information
       try {
-        // Sleep to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        console.log(`Fetching non-featured tournaments: page ${pageToFetch} of ${totalPages}`);
-        
-        // Fetch regular tournaments from the end (most recent first)
-        const result = await startGGApi.getTournaments(
+        const initialResult = await startGGApi.getTournaments(
           pastDays3,
           futureDays5,
-          pageToFetch,
+          1,
           perPage
         );
         
-        // Filter tournaments
-        const filteredTournaments = result.tournaments.filter(
-          tournament => tournament.endAt >= todayDate && tournament.numAttendees > 20
-        );
+        // Calculate total pages (if pageInfo.total is available)
+        const totalItems = initialResult.pageInfo?.total || 0;
+        let totalPages;
         
-        console.log(`Found ${filteredTournaments.length} non-featured tournaments on page ${pageToFetch}`);
-        
-        // Add to our regular tournaments collection
-        regularTournaments.push(...filteredTournaments);
-        
-        // If we have enough tournaments, stop fetching more pages
-        if (allTournaments.length + regularTournaments.length >= 75) {
-          console.log("Reached target number of tournaments, stopping fetch");
-          break;
+        if (totalItems > 0) {
+          // We have a valid totalItems count, calculate pages
+          totalPages = Math.ceil(totalItems / perPage);
+          console.log(`Calculated ${totalPages} pages from ${totalItems} total tournaments`);
+        } else {
+          // Check if we got tournaments in the result to make a better guess
+          if (initialResult.tournaments && initialResult.tournaments.length > 0) {
+            // Assuming there are significantly more pages
+            totalPages = 25; // A more reasonable assumption since there are significantly more than 10
+            console.log(`No total count available, but got results - assuming at least ${totalPages} pages`);
+          } else {
+            // Last resort fallback
+            totalPages = 5;
+            console.log(`No data available to estimate pages, using minimum fallback of ${totalPages} pages`);
+          }
         }
+        
+        // Start from the last page and work backwards (most recent tournaments first)
+        const regularTournaments = [];
+        const pagesToFetch = Math.min(totalPages, 20); // Allow up to 20 pages now
+        
+        for (let pageOffset = 0; pageOffset < pagesToFetch; pageOffset++) {
+          const pageToFetch = totalPages - pageOffset;
+          if (pageToFetch <= 0) break;
+          
+          try {
+            // Sleep to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            console.log(`Fetching non-featured tournaments: page ${pageToFetch} of ${totalPages}`);
+            
+            // Fetch regular tournaments from the end (most recent first)
+            const result = await startGGApi.getTournaments(
+              pastDays3,
+              futureDays5,
+              pageToFetch,
+              perPage
+            );
+            
+            // Check if we actually got tournaments
+            if (!result.tournaments || result.tournaments.length === 0) {
+              console.log(`No tournaments found on page ${pageToFetch}, skipping...`);
+              // If we've reached an empty page at the end, adjust total pages
+              if (pageOffset === 0) {
+                totalPages = Math.max(pageToFetch - 1, 1);
+                console.log(`Adjusting total pages estimate to ${totalPages}`);
+              }
+              continue;
+            }
+            
+            // Filter tournaments to include only those that haven't ended
+            // and have a minimum number of attendees
+            const filteredTournaments = result.tournaments.filter(
+              tournament => tournament.endAt >= todayDate && tournament.numAttendees > 20
+            );
+            
+            console.log(`Found ${filteredTournaments.length} qualifying non-featured tournaments on page ${pageToFetch}`);
+            
+            // Add to our regular tournaments collection
+            regularTournaments.push(...filteredTournaments);
+            
+            // If we have enough tournaments, stop fetching more pages
+            if (allTournaments.length + regularTournaments.length >= 100) {
+              console.log("Reached target number of tournaments, stopping fetch");
+              break;
+            }
+          } catch (error) {
+            console.error(`Error fetching regular tournaments page ${pageToFetch}:`, error);
+            // If we hit an error on the highest page, it might be that the page doesn't exist
+            // Adjust our estimate if this was our first attempt
+            if (pageOffset === 0) {
+              totalPages = Math.max(pageToFetch - 1, 1);
+              console.log(`Error on highest page, adjusting total pages estimate to ${totalPages}`);
+            }
+          }
+        }
+        
+        // Sort regular tournaments by start time before adding to collection
+        regularTournaments.sort((a, b) => a.startAt - b.startAt);
+        
+        // Add regular tournaments to our collection
+        allTournaments = [...allTournaments, ...regularTournaments];
+        
+        console.log(`Added ${regularTournaments.length} non-featured tournaments`);
       } catch (error) {
-        console.error(`Error fetching regular tournaments page ${pageToFetch}:`, error);
+        console.error('Error determining total pages for regular tournaments:', error);
       }
     }
-    
-    // Add regular tournaments to our collection
-    allTournaments = [...allTournaments, ...regularTournaments];
-    
-  } catch (error) {
-    console.error('Error determining total pages for regular tournaments:', error);
-  }
-}
+
     // Remove duplicates based on tournament ID
-    allTournaments = allTournaments.filter((tournament, index, self) =>
+    const uniqueTournaments = allTournaments.filter((tournament, index, self) =>
       index === self.findIndex((t) => t.id === tournament.id)
     );
-
-   
-    allTournaments.sort((a, b) => a.startAt - b.startAt);
+    
+    console.log(`After removing duplicates: ${uniqueTournaments.length} tournaments (was ${allTournaments.length})`);
+    
+    // Sort all tournaments by start time (soonest first)
+    uniqueTournaments.sort((a, b) => a.startAt - b.startAt);
 
     // Limit to top 100 tournaments 
-    allTournaments = allTournaments.slice(0, 100);
-    console.log(`Total tournaments to process: ${allTournaments.length}`);
+    const limitedTournaments = uniqueTournaments.slice(0, 100);
+    console.log(`Total tournaments to process: ${limitedTournaments.length}`);
 
-    // THIS IS THE CRITICAL PART: Save to cache and database
-    for (const tournament of allTournaments) {
+    // Process and save each tournament
+    for (const tournament of limitedTournaments) {
       try {
+        // Sleep briefly to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
         // Fetch detailed tournament info
         const tournamentDetail = await startGGApi.getTournamentDetails(tournament.slug);
         
@@ -297,6 +341,8 @@ if (allTournaments.length < 75) {
           );
           
           console.log(`Saved tournament to cache and DB: ${tournament.name}`);
+        } else {
+          console.log(`Failed to get details for tournament: ${tournament.name}`);
         }
       } catch (error) {
         console.error(`Error processing tournament ${tournament.name}:`, error);
