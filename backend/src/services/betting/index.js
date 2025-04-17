@@ -6,10 +6,63 @@ const Transaction = require('../../models/Transactions');
 const tournamentService = require('../tournament');
 const notificationService = require('../notification');
 const { AppError } = require('../../middleware/error');
+// Add this import at the top of src/services/betting/index.js
+const { startGGApi } = require('../../integrations/startgg/client');
 
 /**
  * Create a new bet
  */
+
+const isMatchStarted = async (phaseId, setId) => {
+  try {
+    // For direct set IDs, check the set directly
+    if (!setId.startsWith('preview_')) {
+      const set = await startGGApi.getSetById(setId);
+      
+      // State 2 means in progress, 3 means completed
+      if (set && (set.state === 2 || set.state === 3)) {
+        console.log(`Match ${setId} has already started or completed (state: ${set.state})`);
+        return true;
+      }
+      
+      return false;
+    }
+    
+    // For preview IDs, we need to check the phase sets
+    const phaseSets = await startGGApi.getSetsByPhaseWithReduced(phaseId, 1, 100);
+    
+    if (!phaseSets || phaseSets.length === 0) {
+      console.log(`No sets found for phase ${phaseId}, assuming match hasn't started`);
+      return false;
+    }
+    
+    // Parse the preview ID to extract relevant info
+    const matches = setId.match(/preview_(\d+)_(\d+)_(\d+)/);
+    if (!matches || matches.length < 4) {
+      console.log(`Invalid preview ID format: ${setId}, cannot determine match status`);
+      // For safety, prevent betting if we can't determine status
+      return true;
+    }
+    
+    const setIndex = parseInt(matches[3]);
+    
+    // Find the actual set that corresponds to this preview ID
+    // This is an approximation - would need to be customized for your exact preview ID format
+    if (setIndex < phaseSets.length) {
+      const correspondingSet = phaseSets[setIndex];
+      if (correspondingSet && (correspondingSet.state === 2 || correspondingSet.state === 3)) {
+        console.log(`Corresponding match has already started or completed (state: ${correspondingSet.state})`);
+        return true;
+      }
+    }
+    
+    return false;
+  } catch (error) {
+    console.error(`Error checking if match has started: ${error.message}`);
+    // For safety, prevent betting if we can't determine status
+    return true;
+  }
+};
 
 const createBet = async (betData, userId) => {
   const session = await mongoose.startSession();
@@ -40,6 +93,11 @@ const createBet = async (betData, userId) => {
     
     if (!set) {
       throw new AppError('Match not found in phase', 404);
+    }
+
+    const matchStarted = await isMatchStarted(betData.phaseId, betData.setId);
+    if (matchStarted) {
+      throw new AppError('Cannot create bets for matches that have already started', 400);
     }
     if (set.state === 3) { // 3 is the "completed" state in Start.GG API
       throw new AppError('Cannot create a bet for a completed match', 400);
@@ -122,150 +180,6 @@ const createBet = async (betData, userId) => {
 };
 
 
-/**
- * Place a bet on an existing bet
- */
-// const placeBet = async (betId, prediction, amount, userId) => {
-//   const session = await mongoose.startSession();
-//   session.startTransaction();
-
-//   try {
-
-//     const tournament = await tournamentService.getTournamentBySlug(betData.tournamentSlug);
-//     if (!tournament) {
-//       throw new AppError('Tournament not found', 404);
-//     }
-
-//     // Validate tournament hasn't ended
-//     const currentTime = Math.floor(Date.now() / 1000);
-//     if (tournament.endAt < currentTime) {
-//       throw new AppError('Cannot create bets cmpleted tournaments', 400);
-//     }
-
-//     // Find the event and phase in the tournament
-//     const event = tournament.events.find(e => e.id === betData.eventId);
-//     if (!event) {
-//       throw new AppError('Event not found in tournament', 404);
-//     }
-
-//     const phase = event.phases.find(p => p.id === betData.phaseId);
-//     if (!phase) {
-//       throw new AppError('Phase not found in event', 404);
-//     }
-
-//     // Get sets for this phase to find the specific match
-//     const sets = await tournamentService.getSetsByPhaseId(betData.phaseId);
-//     const set = sets.find(s => String(s.id) === String(betData.setId));
-    
-//     if (!set) {
-//       throw new AppError('Match not found in phase', 404);
-//     }
-
-//     // Check if match is already completed
-//     if (set.state === 3) { // 3 is the "completed" state in Start.GG API
-//       throw new AppError('Cannot create a bet for a completed match', 400);
-//     }
-
-//     // Validate match has two contestants
-//     if (!set.slots || set.slots.length !== 2 || !set.slots[0].entrant || !set.slots[1].entrant) {
-//       throw new AppError('Match must have exactly two contestants', 400);
-//     }
-
-//     // Validate bet amounts
-//     if (betData.minimumBet < 0.0001) {
-//       throw new AppError('Minimum bet must be at least 0.0001', 400);
-//     }
-
-//     if (betData.maximumBet < betData.minimumBet) {
-//       throw new AppError('Maximum bet must be greater than minimum bet', 400);
-//     }
-//     // Find the bet
-//     const bet = await Bet.findById(betId).session(session);
-//     if (!bet) {
-//       throw new AppError('Bet not found', 404);
-//     }
-
-//     // Check if bet is open
-//     if (bet.status !== 'open') {
-//       throw new AppError('This bet is no longer accepting participants', 400);
-//     }
-
-//     // Check if user has already participated
-//     if (bet.hasUserParticipated(userId)) {
-//       throw new AppError('You have already placed a bet on this match', 400);
-//     }
-
-//     // Validate prediction
-//     if (prediction !== 1 && prediction !== 2) {
-//       throw new AppError('Prediction must be 1 (contestant 1) or 2 (contestant 2)', 400);
-//     }
-
-//     // Validate amount
-//     if (amount < bet.minimumBet || amount > bet.maximumBet) {
-//       throw new AppError(`Bet amount must be between ${bet.minimumBet} and ${bet.maximumBet}`, 400);
-//     }
-
-//     // Check user balance
-//     const user = await User.findById(userId).session(session);
-//     if (!user) {
-//       throw new AppError('User not found', 404);
-//     }
-
-//     if (user.balance < amount) {
-//       throw new AppError('Insufficient balance', 400);
-//     }
-
-//     // Deduct amount from user balance
-//     user.balance -= amount;
-//     await user.save({ session });
-
-//     // Create transaction record
-//     const transaction = new Transaction({
-//       user: userId,
-//       type: 'bet',
-//       amount: amount,
-//       currency: 'ETH', // Default currency
-//       status: 'completed',
-//       betId: bet._id,
-//       description: `Bet on ${prediction === 1 ? bet.contestant1.name : bet.contestant2.name} in ${bet.tournamentName}: ${bet.matchName}`
-//     });
-
-//     await transaction.save({ session });
-
-//     // Add user to bet participants
-//     bet.participants.push({
-//       user: userId,
-//       prediction: prediction,
-//       amount: amount,
-//       timestamp: new Date()
-//     });
-
-//     // Update bet pools
-//     bet.totalPool += amount;
-//     if (prediction === 1) {
-//       bet.contestant1Pool += amount;
-//     } else {
-//       bet.contestant2Pool += amount;
-//     }
-
-//     await bet.save({ session });
-
-//     // Add bet to user's participated bets
-//     await User.findByIdAndUpdate(
-//       userId,
-//       { $push: { participatedBets: bet._id } },
-//       { session }
-//     );
-
-//     await session.commitTransaction();
-//     return bet;
-//   } catch (error) {
-//     await session.abortTransaction();
-//     throw error;
-//   } finally {
-//     session.endSession();
-//   }
-// };
 const placeBet = async (betId, prediction, amount, userId) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -280,6 +194,10 @@ const placeBet = async (betId, prediction, amount, userId) => {
     // Check if bet is open
     if (bet.status !== 'open') {
       throw new AppError('This bet is no longer accepting participants', 400);
+    }
+    const matchStarted = await isMatchStarted(bet.phaseId, bet.setId);
+    if (matchStarted) {
+      throw new AppError('Cannot place bets on matches that have already started', 400);
     }
 
     // Additional validation logic (we're skipping some to keep it concise)...
@@ -713,5 +631,6 @@ module.exports = {
   claimWinnings,
   reportDispute,
   getActiveBets,
-  updateBetStatus
+  updateBetStatus,
+  isMatchStarted
 };

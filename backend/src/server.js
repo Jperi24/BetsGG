@@ -6,6 +6,7 @@ const tournamentService = require('./services/tournament');
 const cleanupExpiredTournaments = require('./services/tournament/cleanup')
 const betUpdateService = require('./services/betting/update-service');
 const { client: redisClient, client } = require('./utils/redis');
+const notificationCleanup = require('./services/notification/cleanup');
 
 // Flag to determine if we should seed the database
 const shouldSeedDatabase = process.env.SEED_DATABASE === 'true';
@@ -40,13 +41,13 @@ async function startServer() {
 
     // await cleanupExpiredTournaments.cleanupExpiredTournaments();
 
-    await cleanupExpiredTournaments.scheduleCleanup()
+    cleanupExpiredTournaments.scheduleCleanup()
     
-    // Initialize tournament cache
-    await tournamentService.fetchAllTournaments();
+
 
   
     await tournamentService.initializeCache();
+    notificationCleanup.scheduleCleanup(24, 20);
  
 
 

@@ -5,6 +5,7 @@ const User = require('../../models/User');
 const { startGGApi } = require('../../integrations/startgg/client');
 const { AppError } = require('../../middleware/error');
 const mongoose = require('mongoose');
+const {isMatchStarted} = require('./index')
 
 // Track if update is currently running to prevent parallel execution
 let isUpdating = false;
@@ -64,6 +65,51 @@ const parsePreviewId = (previewId) => {
 /**
  * Update a single bet status based on match results
  */
+
+// src/services/betting/update-service.js - Updated updateBetStatus function
+const closeStartedMatchBetting = async () => {
+  if (isUpdating) {
+    console.log('Bet update is already in progress');
+    return;
+  }
+
+  isUpdating = true;
+  console.log('Starting to close betting for started matches...');
+  
+  try {
+    // Find all open bets
+    const openBets = await Bet.find({
+      status: 'open'
+    });
+    
+    console.log(`Found ${openBets.length} open bets to check`);
+    
+    for (const bet of openBets) {
+      try {
+        // Check if match has started
+        const matchStarted = await isMatchStarted(bet.phaseId, bet.setId);
+        
+        if (matchStarted) {
+          console.log(`Match for bet ${bet._id} has started, updating status to in_progress`);
+          
+          // Update bet status
+          bet.status = 'in_progress';
+          await bet.save();
+        }
+      } catch (error) {
+        console.error(`Error checking bet ${bet._id}:`, error);
+      }
+    }
+    
+    console.log('Completed closing betting for started matches');
+  } catch (error) {
+    console.error('Error in closeStartedMatchBetting:', error);
+  } finally {
+    isUpdating = false;
+  }
+};
+
+
 const updateBetStatus = async (bet) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -159,9 +205,7 @@ const updateBetStatus = async (bet) => {
             console.error(`Fallback approach error: ${fallbackError.message}`);
           }
         }
-        
-       
-   
+      } else {
         // For active tournaments, use the standard approach
         console.log(`Tournament is active, using standard set lookup approach`);
         
@@ -199,7 +243,7 @@ const updateBetStatus = async (bet) => {
               console.log(`No match found in first page, trying more pages`);
               
               // Try more pages
-              for (let page = 2; page <= 500 && !set; page++) {
+              for (let page = 2; page <= 5 && !set; page++) {
                 try {
                   const moreSets = await startGGApi.getSetsByPhaseWithReduced(bet.phaseId, page, 20);
                   if (moreSets && moreSets.length > 0) {
@@ -270,7 +314,24 @@ const updateBetStatus = async (bet) => {
       return;
     }
     
- 
+    // *** CRITICAL FIX: Check if the set is actually completed ***
+    const isSetCompleted = set.state === 3; // State 3 indicates a completed set in Start.GG API
+    
+    if (!isSetCompleted) {
+      console.log(`Set for bet ${bet._id} is not completed yet (state: ${set.state}), skipping update`);
+      
+      // If the set is in progress, we can update the bet status to in_progress
+      if (set.state === 2) { // State 2 indicates an in-progress set
+        if (bet.status !== 'in_progress') {
+          console.log(`Updating bet ${bet._id} status to in_progress`);
+          bet.status = 'in_progress';
+          await bet.save({ session });
+        }
+      }
+      
+      await session.commitTransaction();
+      return;
+    }
     
     console.log(`Set found and completed for bet ${bet._id}, processing result`);
     
@@ -415,6 +476,7 @@ const setupScheduledUpdates = (intervalMinutes = 10) => {
   
   // Run immediately on startup
   updateAllBets();
+  closeStartedMatchBetting();
   
   // Then schedule regular updates
   setInterval(updateAllBets, interval);

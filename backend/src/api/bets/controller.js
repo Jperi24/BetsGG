@@ -61,12 +61,16 @@ exports.getBetById = async (req, res, next) => {
       });
     }
     
-    // Check if user has participated in this bet
+      // Check if user has participated in this bet
     let userParticipation = null;
     if (req.user) {
-      userParticipation = bet.participants.find(
-        p => p.user.toString() === req.user.id
-      );
+      userParticipation = bet.participants.find(p => {
+        // Handle both populated and unpopulated user references
+        const participantUserId = p.user._id ? p.user._id.toString() : p.user.toString();
+        return participantUserId === req.user.id.toString();
+      });
+      
+      console.log("Found participation:", !!userParticipation);
     }
     
     res.status(200).json({
