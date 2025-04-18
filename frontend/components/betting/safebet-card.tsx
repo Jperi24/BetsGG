@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Bet, BetStatus } from '@/lib/api/bets';
-import { AlertCircle, Award, Clock, Coins, Sparkles } from 'lucide-react';
+import { AlertCircle, Award, Clock, Coins } from 'lucide-react';
 
 interface BetCardProps {
   bet: Bet;
@@ -55,9 +55,6 @@ export default function BetCard({ bet, userPrediction }: BetCardProps) {
     return date.toLocaleString();
   };
   
-  // Check if bet has custom offers
-  const hasCustomOffers = bet.betOffers && bet.betOffers.length > 0;
-  
   return (
     <Link href={`/bet/${bet._id}`} className="block">
       <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
@@ -68,17 +65,9 @@ export default function BetCard({ bet, userPrediction }: BetCardProps) {
               <h3 className="font-semibold">{bet.tournamentName}</h3>
               <p className="text-sm text-indigo-100">{bet.eventName}</p>
             </div>
-            <div className="flex items-center gap-2">
-              {hasCustomOffers && (
-                <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full flex items-center">
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  Custom Odds
-                </span>
-              )}
-              <span className={`${statusBadge.color} text-white text-xs px-2 py-1 rounded-full`}>
-                {statusBadge.label}
-              </span>
-            </div>
+            <span className={`${statusBadge.color} text-white text-xs px-2 py-1 rounded-full`}>
+              {statusBadge.label}
+            </span>
           </div>
         </div>
         

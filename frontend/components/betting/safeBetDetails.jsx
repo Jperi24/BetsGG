@@ -1,11 +1,9 @@
-// components/betting/BetDetails.jsx (Updated)
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/providers/auth-providers';
 import { getBetById, claimWinnings } from '@/lib/api/bets';
 import { Loader, AlertCircle, Award, ArrowLeft, TrendingUp, Clock, CheckCircle, Trophy } from 'lucide-react';
 import PlaceBetForm from './place-bet';
-import IntegratedBettingView from './IntegratedBettingView';
 
 const BetDetails = ({ betId }) => {
   const { user, updateUserData } = useAuth();
@@ -359,7 +357,7 @@ const BetDetails = ({ betId }) => {
             </div>
           )}
           
-          {/* Claim Winnings Button for standard bets */}
+          {/* Claim Winnings Button */}
           {canClaimWinnings() && (
             <div className="mt-8">
               {claimSuccess ? (
@@ -399,8 +397,26 @@ const BetDetails = ({ betId }) => {
         </div>
       </div>
       
-      {/* Integrated Betting View - New component combining standard and custom odds betting */}
-      <IntegratedBettingView bet={bet} userParticipation={userParticipation} />
+      {/* Place Bet Section (only if bet is open and user has not participated) */}
+      {bet.status === 'open' && !hasParticipated() && (
+        <div className="bg-white shadow-md rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+            <h2 className="text-lg font-medium text-gray-900">Place Your Bet</h2>
+          </div>
+          
+          <div className="p-6">
+            <PlaceBetForm 
+              bet={bet} 
+              onSuccess={() => {
+                // Reload bet data after successful bet placement
+                setTimeout(() => {
+                  window.location.reload();
+                }, 2000);
+              }} 
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

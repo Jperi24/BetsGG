@@ -17,32 +17,6 @@ export interface BetParticipant {
   timestamp: string;
 }
 
-// Custom odds interfaces
-export interface BetOdds {
-  numerator: number;
-  denominator: number;
-}
-
-export interface BetOfferMatch {
-  user: string | User;
-  amount: number;
-  counterAmount: number;
-  timestamp: string;
-  claimed: boolean;
-}
-
-export interface BetOffer {
-  _id: string;
-  user: string | User;
-  prediction: 1 | 2;
-  amount: number;
-  odds: BetOdds;
-  remainingAmount: number;
-  matches: BetOfferMatch[];
-  timestamp: string;
-  claimed: boolean;
-}
-
 export interface Bet {
   _id: string;
   tournamentId: string;
@@ -71,8 +45,6 @@ export interface Bet {
   resultDeterminedAt?: string;
   disputed: boolean;
   disputeReason?: string;
-  // Add custom odds betOffers property
-  betOffers?: BetOffer[];
 }
 
 export interface CreateBetData {
@@ -114,6 +86,7 @@ export const getBetById = async (betId: string): Promise<{
 };
 
 // Get bets by tournament
+// Updated getBetsByTournament function for lib/api/bets.ts
 export const getBetsByTournament = async (
   tournamentSlug: string, 
   status?: BetStatus
