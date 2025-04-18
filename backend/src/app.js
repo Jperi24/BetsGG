@@ -12,6 +12,7 @@ const { secureRouteWithSafeMethods } = require('./middleware/security');
 const { rateLimit } = require('express-rate-limit');
 require('dotenv').config();const passport = require('passport');
 const { setupGoogleAuth } = require('./services/auth/google-auth');
+const customOddsBettingRoutes = require('./api/bets/custom-odds-routes');
 
 
 
@@ -235,6 +236,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/notifications',secureRouteWithSafeMethods, notificationsRoutes);
 app.use('/api/auth/sessions',secureRouteWithSafeMethods, sessionRoutes);
+app.use('/api/custom-bets', customOddsBettingRoutes);
 
 // Enhanced health check endpoint
 app.get('/health', (req, res) => {
